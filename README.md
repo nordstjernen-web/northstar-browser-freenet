@@ -52,10 +52,19 @@ archive of HTML, CSS and JavaScript is a website. Reaching the network
 needs a Freenet node running on your machine; Northstar is a client of
 that node, and finds it at `127.0.0.1:7509` by default.
 
+Getting a node running is the whole of the setup, and it is one command
+on Linux — the installer also registers it as a background service, which
+is what keeps the node updating itself:
+
 ```sh
-# with a node running (see freenet.org)
+curl -fsSL https://freenet.org/install.sh | sh   # macOS and Windows have installers
+northstar http://127.0.0.1:7509/                 # the node's dashboard; wait for peers
 northstar "freenet://Gi5zrGqRvxce8JBuV11AvD3WK3hwCahd2Z7ktBaBLVpC/"
 ```
+
+See [docs/freenet.md](docs/freenet.md#setting-up-a-node-on-a-new-install)
+for the other platforms, the service commands, and reaching a node on
+another machine.
 
 The address bar keeps the `freenet:` URL; only the transfer itself is
 addressed to the node. That is what makes each contract key a real
@@ -68,11 +77,15 @@ origin, and it buys three things:
 - **The web stays out.** A page on `https://example.com` cannot read
   Freenet content — it is cross-origin, and the node sends no CORS
   headers.
-- **Applications work unmodified.** Links written the way the Freenet
-  documentation asks — absolute against `/v1/contract/web/<key>/` —
-  collapse to the address they name, and a contract's own JavaScript
-  opens the node's client API at `/v1/contract/command` exactly as it
-  would on the gateway.
+- **Sites work unmodified.** Links written the way the Freenet
+  documentation asks — absolute against `/v1/contract/web/<key>/`, or the
+  `/v2/` spelling of the same — collapse to the address they name, and a
+  contract's own JavaScript opens the node's client API at
+  `/v1/contract/command` exactly as it would on the gateway.
+
+An application that talks to the node through the shell page the node
+frames it in does not connect yet, for one reason written down in
+[docs/freenet.md](docs/freenet.md#the-nodes-shell-page-and-the-one-thing-that-does-not-work).
 
 The screenshot above is a site published with `fdev website publish` and
 served by a local node joined to the live network. The gateway address is
