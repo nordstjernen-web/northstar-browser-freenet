@@ -37,6 +37,34 @@ ns_nodectl_verb_is_known(const char *verb)
     return FALSE;
 }
 
+#ifdef G_OS_WIN32
+
+int  ns_nodectl_supervisor_open(void)   { return -1; }
+void ns_nodectl_supervisor_listen(void) { }
+void ns_nodectl_supervisor_close(void)  { }
+
+gboolean
+ns_nodectl_available(void)
+{
+    return FALSE;
+}
+
+gboolean
+ns_nodectl_run(const char *verb, char **output)
+{
+    (void)verb;
+    if (output)
+        *output = g_strdup("The Freenet node is managed by its own Windows "
+                           "service; use the tray icon it installs.");
+    return FALSE;
+}
+
+#else
+
+static int     g_supervisor_fd = -1;
+static int     g_supervisor_peer_fd = -1;
+static GString *g_supervisor_buf;
+
 static char *
 ns_nodectl_escape(const char *text)
 {
@@ -67,34 +95,6 @@ ns_nodectl_unescape(const char *text)
     }
     return g_string_free(out, FALSE);
 }
-
-#ifdef G_OS_WIN32
-
-int  ns_nodectl_supervisor_open(void)   { return -1; }
-void ns_nodectl_supervisor_listen(void) { }
-void ns_nodectl_supervisor_close(void)  { }
-
-gboolean
-ns_nodectl_available(void)
-{
-    return FALSE;
-}
-
-gboolean
-ns_nodectl_run(const char *verb, char **output)
-{
-    (void)verb;
-    if (output)
-        *output = g_strdup("The Freenet node is managed by its own Windows "
-                           "service; use the tray icon it installs.");
-    return FALSE;
-}
-
-#else
-
-static int     g_supervisor_fd = -1;
-static int     g_supervisor_peer_fd = -1;
-static GString *g_supervisor_buf;
 
 static char *
 ns_nodectl_find_node(void)
