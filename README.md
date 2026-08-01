@@ -92,6 +92,18 @@ served by a local node joined to the live network. The gateway address is
 configurable (`freenet_gateway`, `NS_FREENET_GATEWAY`, or **Settings →
 General**) and accepts an `https://` gateway as well as loopback.
 
+**The node is visible from the browser.** An icon in the toolbar carries
+its state — offline, running without peers, or connected with the peer
+count — and opens `about:freenet`, which reports what the node is doing,
+lists the contracts it holds as links, and can **start, stop and restart**
+it. The browser never spawns the node itself: it asks the supervisor that
+launched it, because the browser is sandboxed out of running programs on
+Linux and macOS and forbids itself child processes on Windows. What the
+supervisor runs is `freenet service …`, the node's own command, so the
+platform's service manager stays in charge of a daemon that restarts
+itself to update. See
+[docs/freenet.md](docs/freenet.md#watching-the-node-and-starting-it).
+
 The older `freenet:USK@…` network, now called Hyphanet, is a different
 project and is not supported.
 

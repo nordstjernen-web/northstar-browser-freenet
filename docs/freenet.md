@@ -395,22 +395,31 @@ and the transfer never leaves the machine.
 Two pieces of chrome exist because a browser that depends on a local
 daemon should say whether the daemon is there.
 
-A **dot in the toolbar** carries the node's state: dim when nothing
-answers at the gateway, amber when the node is running but has found no
-peers — the state in which every address fails and nothing explains why —
-and green with the peer count beside it once it has joined. Its tooltip
-spells the same thing out. It is one request to the gateway root every
-twenty seconds, made on a worker thread; when no node is listening that
-is a refused connection on loopback and costs nothing. Clicking it opens
-the console.
+An **icon in the toolbar** carries the node's state, using the standard
+network symbolic icons so it themes and scales with everything else:
+`network-offline-symbolic`, dimmed, when nothing answers at the gateway;
+`network-no-route-symbolic`, amber, when the node is running but has
+found no peers — the state in which every address fails and nothing
+explains why — and `network-transmit-receive-symbolic`, green, with the
+peer count beside it once it has joined. Its tooltip spells the same
+thing out. It is one request to the gateway root every twenty seconds,
+made on a worker thread; when no node is listening that is a refused
+connection on loopback and costs nothing. Clicking it opens the console.
 
-The **Freenet node console** is `about:freenet`, reached from that dot or
-from **Menu → Freenet Node Console**. It reports the gateway, whether the
-node answers, its peer count, how many contracts it holds, its uptime and
-its peer id, and it has buttons for **start**, **stop**, **restart** and
-**service status**. Like `about:settings` and `about:history` it is
+The **Freenet node console** is `about:freenet`, reached from that icon
+or from **Menu → Freenet Node Console**. It reports the gateway, whether
+the node answers, its peer count, how many contracts it holds, its uptime
+and its peer id, and it has buttons for **start**, **stop**, **restart**
+and **service status**. Like `about:settings` and `about:history` it is
 refused to web content — a page that fetches `about:freenet-control` gets
 403, which matters more here than for the others.
+
+It also lists **the contracts the node holds**, each as a link, and takes
+an address in a box. That list is not decoration: it is exactly the set a
+[shortened address](#short-addresses) is completed against, so what the
+browser can and cannot resolve is visible rather than guessed at. An
+address whose prefix is not in that list will not open, and now says so
+with the evidence in front of you.
 
 ### Why the supervisor runs the command
 
@@ -442,9 +451,30 @@ which is what the console prints, so `sudo freenet service start
 
 When the browser runs without its supervisor — `--no-watchdog`, or any
 headless invocation — there is no channel, the buttons are disabled, and
-the console says why. On Windows the channel is not built: the installer
-registers a Windows service with a tray icon that already offers start
-and stop.
+the console says why.
+
+**Windows works the same way, for a different reason.** There is no
+seccomp or Landlock there, but the browser applies
+`ProcessChildProcessPolicy = NoChildProcessCreation` to itself
+(`src/security.c`), so it cannot create a process at all. `CreateProcessW`
+is refused, and so is GLib's `g_spawn`, whose Windows implementation goes
+through a `gspawn-win64-helper` binary that is itself a child. The
+supervisor is spawned before that mitigation is applied — it returns from
+`ns_watchdog_run_supervisor` above the call in `src/appmain.c` — so it is
+unrestricted, exactly as on Unix.
+
+The channel is a pair of anonymous pipes whose child ends are
+inheritable, their handle values passed down in the same
+`NS_NODE_CONTROL_FD` variable, and the line protocol is shared with the
+Unix path rather than reinvented. The variable is set through
+`SetEnvironmentVariableW` as well as `g_setenv`, because `CreateProcessW`
+with a null environment hands the child the Windows environment block and
+not the C runtime's copy — without that the handles never arrive.
+
+The policy is read back from the kernel with
+`GetProcessMitigationPolicy` rather than assumed, so if it is ever lifted
+— `NS_NO_WIN32_MITIGATIONS` does that — the browser notices and runs the
+command directly instead of pretending it cannot.
 
 ## Configuration
 
