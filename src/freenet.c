@@ -512,6 +512,39 @@ ns_freenet_known_contract_for_host(const char *host)
     return found;
 }
 
+/* The node's client API answers anything that can reach the port: it has no
+ * origin check and no authentication on loopback, and a WebSocket is not
+ * bound by the same-origin policy. So an ordinary web page can open one and
+ * drive the node. Only a document that is itself Freenet has business there. */
+gboolean
+ns_freenet_is_node_endpoint(const char *url)
+{
+    if (!url) return FALSE;
+
+    static const char *const schemes[] = {
+        "ws://", "wss://", "http://", "https://", NULL
+    };
+    const char *authority = NULL;
+    for (int i = 0; schemes[i]; i++) {
+        size_t n = strlen(schemes[i]);
+        if (g_ascii_strncasecmp(url, schemes[i], n) == 0) {
+            authority = url + n;
+            break;
+        }
+    }
+    if (!authority) return FALSE;
+
+    g_autofree char *base = ns_freenet_gateway_base(FALSE);
+    if (!base) return FALSE;
+    const char *gateway = strstr(base, "://");
+    gateway = gateway ? gateway + 3 : base;
+
+    size_t host_len = strcspn(authority, "/?#");
+    size_t gateway_len = strlen(gateway);
+    return host_len == gateway_len &&
+           g_ascii_strncasecmp(authority, gateway, host_len) == 0;
+}
+
 char *
 ns_freenet_localize_origin(const char *target, const char *doc_url)
 {

@@ -53,6 +53,7 @@ ns_freenet_status *ns_freenet_status_query(void);
 void               ns_freenet_status_free(ns_freenet_status *status);
 void  ns_freenet_collect_keys(const guint8 *data, gsize len, GPtrArray *out);
 char *ns_freenet_known_contract_for_host(const char *host);
+gboolean ns_freenet_is_node_endpoint(const char *url);
 
 G_END_DECLS
 

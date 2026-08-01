@@ -19966,6 +19966,12 @@ ns_window_websocket_ctor(JSContext *ctx, JSValueConst this_val,
         return ns_throw_dom_exception(ctx, "SyntaxError", 12,
             "WebSocket URL must use ws: or wss:");
     }
+    if (ns_freenet_is_node_endpoint(target) &&
+        !(js && js->current_url && ns_freenet_is_url(js->current_url))) {
+        g_free(target);
+        return ns_throw_dom_exception(ctx, "SecurityError", 18,
+            "WebSocket: only a freenet: page may reach the Freenet node");
+    }
     if (strchr(target, '#')) {
         g_free(target);
         return ns_throw_dom_exception(ctx, "SyntaxError", 12,
@@ -20237,6 +20243,12 @@ ns_window_eventsource_ctor(JSContext *ctx, JSValueConst this_val,
         g_ascii_strncasecmp(target, "https://", 8) != 0) {
         g_free(target);
         return JS_ThrowTypeError(ctx, "EventSource URL must use http: or https:");
+    }
+    if (ns_freenet_is_node_endpoint(target) &&
+        !(js && js->current_url && ns_freenet_is_url(js->current_url))) {
+        g_free(target);
+        return ns_throw_dom_exception(ctx, "SecurityError", 18,
+            "EventSource: only a freenet: page may reach the Freenet node");
     }
     if (js && js->current_url &&
         g_ascii_strncasecmp(js->current_url, "https://", 8) == 0 &&
