@@ -11773,10 +11773,10 @@ ns_window_post_message_deliver_job(JSContext *ctx, int argc, JSValueConst *argv)
     JSValue forwarded = JS_GetPropertyStr(ctx, target, "__ndForwardWindow");
     JSValue actual_target = JS_IsObject(forwarded)
         ? JS_DupValue(ctx, forwarded) : JS_DupValue(ctx, target);
-    if (JS_IsObject(forwarded) && js && js->ctx) {
+    if (js && js->ctx) {
         JSValue source = JS_GetPropertyStr(ctx, ev, "source");
         JSValue parent_global = JS_GetGlobalObject(js->ctx);
-        if (JS_IsObject(source) &&
+        if (JS_IsObject(forwarded) && JS_IsObject(source) &&
             JS_VALUE_GET_PTR(source) == JS_VALUE_GET_PTR(target)) {
             JS_SetPropertyStr(ctx, ev, "source",
                               JS_DupValue(ctx, actual_target));
@@ -48104,6 +48104,8 @@ ns_document_set_title(JSContext *ctx, JSValueConst this_val, JSValueConst val)
         if (!head) head = doc;
         t = ns_node_new_element(g_strdup("title"));
         ns_node_append_child(head, t);
+        ns_js_record_child_change(js_from_ctx(ctx), head, t, NULL,
+                                  t->prev_sibling, NULL);
     }
     if (t) {
         ns_js *_j = js_from_ctx(ctx);
