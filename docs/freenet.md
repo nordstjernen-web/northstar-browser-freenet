@@ -244,8 +244,8 @@ fdev website publish ./my-site/ --key my-site
 northstar "freenet://<the key it printed>/"
 ```
 
-[`screenshot.png`](screenshot.png) is that, unretouched. Note that the
-node serves a contract's own content inside a sandboxed frame and returns
-its shell page for the top-level navigation, so a site's markup lives one
-frame down; the address bar and the frame share the same `freenet:`
-origin.
+[`freenet-screenshot.png`](freenet-screenshot.png) is that, unretouched.
+Note that the node serves a contract's own content inside a sandboxed
+frame and returns its shell page for the top-level navigation, so a
+site's markup lives one frame down; the address bar and the frame share
+the same `freenet:` origin.
