@@ -1,6 +1,6 @@
 # Northstar web browser — with Freenet support
 
-![Northstar showing a site published to Freenet, at a freenet:// address](docs/freenet-screenshot.png)
+![Northstar's Freenet node console, showing a connected node with its peers, contracts and controls](docs/freenet-screenshot.png)
 
 Northstar is a minimalist web browser written from scratch in C, and it
 speaks two networks. It browses the web, and it browses

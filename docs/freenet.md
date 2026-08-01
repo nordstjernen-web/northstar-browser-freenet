@@ -779,11 +779,14 @@ static contracts still load over plain HTTP.
 
 freenet:EqJ5YpEE/#AcArxczvbu/1/home
 
-[`freenet-screenshot.png`](freenet-screenshot.png) is a site published
-exactly that way, unretouched. Note that the node serves a contract's own
-content inside a sandboxed frame and returns its shell page for the
-top-level navigation, so a site's markup lives one frame down; the
-address bar and the frame share the same `freenet:` origin.
+[`freenet-screenshot.png`](freenet-screenshot.png) is the node console
+against a live node, unretouched: a connected node with its peer count,
+the contracts it holds, and the controls that start and stop it.
+
+Note when browsing a site that the node serves a contract's own content
+inside a sandboxed frame and returns its shell page for the top-level
+navigation, so a site's markup lives one frame down; the address bar and
+the frame share the same `freenet:` origin.
 
 
 ### Not Hyphanet
