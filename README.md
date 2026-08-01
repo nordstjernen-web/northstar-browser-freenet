@@ -25,6 +25,8 @@ restored like any other address, and each contract key is its own origin.
 See [Freenet](#freenet) below and
 [docs/freenet.md](docs/freenet.md).
 
+https://github.com/freenet/freenet-core/
+
 **Web standards:** Behaviour is measured against the specification text,
 section by section, not against another browser. The engine runs
 web-platform-tests through headless mode; see
