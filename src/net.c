@@ -2754,8 +2754,9 @@ classify_error(long status, const char *transport_error, gboolean is_file_url,
         "📝",
         "That is not a Freenet address",
         "That is not a Freenet address",
-        "A freenet: address names a contract by its key — 32 to 64 base58 "
-        "characters, as printed when a site is published."
+        "A freenet: address names a contract by its key, or by a shorter "
+        "prefix of one, written in base58 — the characters 0, O, I and l "
+        "are not part of that alphabet."
     };
     static const ns_error_info FREENET_MISSING = {
         "🕸",

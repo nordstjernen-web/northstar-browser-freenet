@@ -272,7 +272,7 @@ normalize_url(const char *input)
         g_free(trimmed);
         return local;
     }
-    if (ns_freenet_key_is_valid(trimmed)) {
+    if (ns_freenet_key_is_full(trimmed)) {
         char *out = g_strconcat("freenet://", trimmed, "/", NULL);
         g_free(trimmed);
         return out;

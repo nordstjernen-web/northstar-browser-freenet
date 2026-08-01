@@ -16,7 +16,7 @@ not supported here.
 
 Freenet is a network of peers holding signed, content-addressed
 **contracts**. A contract's key is a hash of its WebAssembly code and its
-author's public key, written as 32–64 base58 characters, and it is
+author's public key, written in base58, and it is
 permanent: publishing new content under the same key does not change the
 address. A contract whose state is a compressed archive of HTML, CSS,
 JavaScript and images is a website.
@@ -37,6 +37,22 @@ as they do anywhere else. `freenet:<key>/…` — one colon, no slashes — is
 accepted as typed shorthand and canonicalised to the `//` form; so is a
 bare contract key pasted into the address bar with nothing around it,
 which is what `fdev` prints when a site is published.
+
+### Short addresses
+
+A full key is around 43 base58 characters, but addresses are handed
+around in shorter forms too — `freenet:4ksJFjsd`, or the 12-character
+prefix of an owner's ed25519 key that `freenet-git` uses. **The browser
+does not judge how long a key should be.** Anything base58 up to 64
+characters is a syntactically valid host, and resolving it is the node's
+job: it expands what it is given and answers, so an address that does not
+exist comes back as the node's own "not found" rather than as a parse
+error from Northstar.
+
+Only one place applies a stricter rule: a bare string typed into the
+address bar with no `freenet:` prefix is treated as a contract key only
+at full length (32+ characters). Otherwise every short word typed into
+the address bar would become a Freenet address instead of a search.
 
 Because the key is the host, a relative link inside a contract resolves
 inside the same contract, and a root-relative link (`/style.css`) resolves

@@ -14,6 +14,7 @@ G_BEGIN_DECLS
 
 gboolean    ns_freenet_is_url(const char *url);
 gboolean    ns_freenet_key_is_valid(const char *key);
+gboolean    ns_freenet_key_is_full(const char *key);
 const char *ns_freenet_gateway(void);
 char       *ns_freenet_gateway_base(gboolean websocket);
 

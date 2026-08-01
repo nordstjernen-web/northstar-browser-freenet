@@ -28,6 +28,17 @@ Significant changes in each release:
   River is sandboxed without network access of its own and proxies its
   WebSocket through the shell that frames it, so every request it made was
   dropped in silence.
+* A short Freenet address resolves. Addresses are passed around in
+  forms much shorter than a full key -- `freenet:4ksJFjsd`, or the
+  12-character prefix of an owner's ed25519 key that `freenet-git` uses --
+  and the browser was refusing anything under 32 characters as malformed
+  before it ever asked the node. How long a key should be is not the
+  browser's judgement to make: any base58 host is now carried to the node,
+  which expands it and answers, so an address that does not exist reports
+  what the node said instead of a parse error. A bare string typed into
+  the address bar with no `freenet:` prefix still has to be full length
+  to be read as a key, or every short word typed there would stop being a
+  search.
 * Freenet is a URL scheme the browser speaks. `freenet://<contract-key>/`
   addresses are typed, linked, bookmarked and restored like any other, and
   the request is served by a Freenet node running on the machine --

@@ -27,11 +27,17 @@ ns_freenet_key_is_valid(const char *key)
 {
     if (!key) return FALSE;
     size_t len = strlen(key);
-    if (len < 32 || len > 64) return FALSE;
+    if (len < 1 || len > 64) return FALSE;
     for (size_t i = 0; i < len; i++)
         if (!strchr(ns_freenet_base58, key[i]))
             return FALSE;
     return TRUE;
+}
+
+gboolean
+ns_freenet_key_is_full(const char *key)
+{
+    return ns_freenet_key_is_valid(key) && strlen(key) >= 32;
 }
 
 const char *
