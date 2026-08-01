@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Northstar on Freenet</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #16202e;
+    background: #f6f8fb;
+    line-height: 1.55;
+  }
+  header {
+    background: #070d3a;
+    color: #fff;
+    padding: 34px 24px 30px;
+    text-align: center;
+  }
+  .star { font-size: 30px; line-height: 1; }
+  header h1 { margin: 10px 0 6px; font-size: 27px; letter-spacing: -.01em; }
+  header p { margin: 0; color: #9fb2d8; font-size: 15px; }
+  main { max-width: 760px; margin: 0 auto; padding: 26px 22px 40px; }
+  section {
+    background: #fff;
+    border-radius: 12px;
+    padding: 18px 22px;
+    margin: 0 0 16px;
+    box-shadow: 0 1px 3px rgba(20,30,50,.08);
+  }
+  h2 { color: #003366; font-size: 17px; margin: 0 0 10px; }
+  p { margin: 0 0 10px; }
+  p:last-child { margin-bottom: 0; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 7px 16px; margin: 0; }
+  dt { color: #5b6470; font-weight: 600; }
+  dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+       font-size: .88em; overflow-wrap: anywhere; }
+  ul { margin: 8px 0 0; padding-left: 20px; }
+  li { margin: 4px 0; }
+  a { color: #003366; }
+  code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+         background: #eef1f6; border-radius: 5px; padding: 1px 5px; font-size: .9em; }
+  footer { text-align: center; color: #6b7686; font-size: 13px; padding: 0 22px 30px; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #14171d; color: #e6e8ec; }
+    section { background: #1d2027; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+    h2 { color: #7fa8dd; }
+    dt { color: #9aa3b2; }
+    a { color: #7fa8dd; }
+    code { background: #262a33; }
+    footer { color: #79818f; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="star">✦</div>
+  <h1>Northstar on Freenet</h1>
+  <p>This page is not on the web. Your node fetched it from the network.</p>
+</header>
+
+<main>
+  <section>
+    <h2>Where you are</h2>
+    <dl>
+      <dt>Address</dt>   <dd id="href">—</dd>
+      <dt>Origin</dt>    <dd id="origin">—</dd>
+      <dt>Contract</dt>  <dd id="key">—</dd>
+    </dl>
+    <p style="margin-top:12px">Read by this page's own JavaScript. The contract
+      key is the origin's host, which is what keeps one contract from reading
+      another's storage.</p>
+  </section>
+
+  <section>
+    <h2>Getting around</h2>
+    <ul>
+      <li>Type a <code>freenet:</code> address, or paste a whole contract key,
+        into the address bar.</li>
+      <li>A shortened address such as <code>freenet:EqJ5YpEE</code> is completed
+        against the contracts your node knows.</li>
+      <li><a href="about:freenet">The node console</a> shows whether your node is
+        connected, what it holds, and can start or stop it.</li>
+      <li><a href="about:settings">Settings</a> holds the gateway address, if
+        your node does not listen on the usual port.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>About</h2>
+    <p>Northstar is a web browser written from scratch in C, with no upstream
+      browser engine. It speaks <code>freenet:</code> as a first-class URL
+      scheme rather than as a bookmark to a local port, so every contract gets
+      its own origin.</p>
+    <p>It is the GPL edition of the
+      <a href="https://nordstjernen.org/">Nordstjernen</a> project, and this
+      page was published to Freenet with <code>fdev website publish</code>.</p>
+  </section>
+</main>
+
+<footer>Served over Freenet · no server answered for this page</footer>
+
+<script>
+  document.getElementById('href').textContent = location.href;
+  document.getElementById('origin').textContent = location.origin;
+  document.getElementById('key').textContent = location.hostname;
+</script>
+</body>
+</html>

@@ -12,6 +12,11 @@ G_BEGIN_DECLS
 
 #define NS_FREENET_DEFAULT_GATEWAY "127.0.0.1:7509"
 
+/* Northstar's own landing page, published to Freenet. Reachable only with a
+ * node running, which is why it is offered rather than being the home page. */
+#define NS_FREENET_START_KEY "3VgtmdXDHDEW3atupXiEThTneSheFtNfV2UiZxSJr7dh"
+#define NS_FREENET_START_URL "freenet://" NS_FREENET_START_KEY "/"
+
 gboolean    ns_freenet_is_url(const char *url);
 gboolean    ns_freenet_key_is_valid(const char *key);
 gboolean    ns_freenet_key_is_full(const char *key);
