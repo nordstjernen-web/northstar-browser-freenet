@@ -39,14 +39,157 @@ ns_nodectl_verb_is_known(const char *verb)
     return FALSE;
 }
 
+static char *
+ns_nodectl_escape(const char *text)
+{
+    GString *out = g_string_new(NULL);
+    for (const char *p = text ? text : ""; *p; p++) {
+        if (*p == '\\')      g_string_append(out, "\\\\");
+        else if (*p == '\n') g_string_append(out, "\\n");
+        else if (*p == '\r') continue;
+        else                 g_string_append_c(out, *p);
+    }
+    return g_string_free(out, FALSE);
+}
+
+static char *
+ns_nodectl_unescape(const char *text)
+{
+    GString *out = g_string_new(NULL);
+    for (const char *p = text ? text : ""; *p; p++) {
+        if (*p != '\\') {
+            g_string_append_c(out, *p);
+            continue;
+        }
+        p++;
+        if (*p == 'n')       g_string_append_c(out, '\n');
+        else if (*p == '\\') g_string_append_c(out, '\\');
+        else if (!*p)        break;
+        else                 g_string_append_c(out, *p);
+    }
+    return g_string_free(out, FALSE);
+}
+
 #ifdef G_OS_WIN32
 
-/* No privilege-dropping supervisor is needed here: the Windows build runs
- * without the seccomp/Landlock confinement the Unix one drops into, so the
- * browser can run the node's own service commands directly. */
-int  ns_nodectl_supervisor_open(void)   { return -1; }
-void ns_nodectl_supervisor_listen(void) { }
-void ns_nodectl_supervisor_close(void)  { }
+/* The browser forbids itself child processes, so the node is started by the
+ * supervisor, which is spawned before that mitigation is applied. The channel
+ * is a pair of anonymous pipes whose child ends are inheritable; their handle
+ * values reach the browser in the environment, the way the Unix build passes a
+ * socketpair descriptor. The line protocol is the same on both. */
+static HANDLE g_sup_cmd_read  = NULL;
+static HANDLE g_sup_rsp_write = NULL;
+static HANDLE g_sup_thread    = NULL;
+
+static char *ns_nodectl_run_node_command(const char *verb, gboolean *ok);
+
+int
+ns_nodectl_supervisor_open(void)
+{
+    if (g_sup_cmd_read) return 0;
+
+    SECURITY_ATTRIBUTES sa;
+    memset(&sa, 0, sizeof sa);
+    sa.nLength = sizeof sa;
+    sa.bInheritHandle = TRUE;
+
+    HANDLE cmd_read = NULL, cmd_write = NULL;
+    HANDLE rsp_read = NULL, rsp_write = NULL;
+    if (!CreatePipe(&cmd_read, &cmd_write, &sa, 0)) return -1;
+    if (!CreatePipe(&rsp_read, &rsp_write, &sa, 0)) {
+        CloseHandle(cmd_read);
+        CloseHandle(cmd_write);
+        return -1;
+    }
+    /* Keep the supervisor's own ends out of the child. */
+    SetHandleInformation(cmd_read, HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation(rsp_write, HANDLE_FLAG_INHERIT, 0);
+
+    g_sup_cmd_read  = cmd_read;
+    g_sup_rsp_write = rsp_write;
+
+    g_autofree char *value =
+        g_strdup_printf("%" G_GUINTPTR_FORMAT ",%" G_GUINTPTR_FORMAT,
+                        (guintptr)cmd_write, (guintptr)rsp_read);
+    g_setenv(NS_NODECTL_FD_ENV, value, TRUE);
+
+    /* CreateProcessW with a NULL environment hands the child the Windows
+     * environment block, which g_setenv does not necessarily reach. */
+    g_autofree wchar_t *wname =
+        g_utf8_to_utf16(NS_NODECTL_FD_ENV, -1, NULL, NULL, NULL);
+    g_autofree wchar_t *wvalue = g_utf8_to_utf16(value, -1, NULL, NULL, NULL);
+    if (wname && wvalue) SetEnvironmentVariableW(wname, wvalue);
+    return 0;
+}
+
+static gboolean
+ns_nodectl_write_all(HANDLE h, const char *data, gsize len)
+{
+    gsize sent = 0;
+    while (sent < len) {
+        DWORD wrote = 0;
+        if (!WriteFile(h, data + sent, (DWORD)(len - sent), &wrote, NULL) ||
+            wrote == 0)
+            return FALSE;
+        sent += wrote;
+    }
+    return TRUE;
+}
+
+static gpointer
+ns_nodectl_supervisor_thread(gpointer data)
+{
+    (void)data;
+    GString *pending = g_string_new(NULL);
+
+    for (;;) {
+        char buf[512];
+        DWORD got = 0;
+        if (!ReadFile(g_sup_cmd_read, buf, sizeof buf, &got, NULL) || got == 0)
+            break;
+        g_string_append_len(pending, buf, (gssize)got);
+        if (pending->len > NS_NODECTL_LINE_MAX) g_string_set_size(pending, 0);
+
+        char *nl;
+        while ((nl = strchr(pending->str, '\n')) != NULL) {
+            *nl = '\0';
+            g_autofree char *verb = g_strdup(g_strstrip(pending->str));
+            g_string_erase(pending, 0, (gssize)(nl - pending->str) + 1);
+
+            gboolean ok = FALSE;
+            g_autofree char *text = ns_nodectl_verb_is_known(verb)
+                ? ns_nodectl_run_node_command(verb, &ok)
+                : g_strdup("Unknown command.");
+            g_autofree char *escaped = ns_nodectl_escape(text);
+            g_autofree char *line =
+                g_strconcat(ok ? "ok " : "err ", escaped, "\n", NULL);
+            if (!ns_nodectl_write_all(g_sup_rsp_write, line, strlen(line)))
+                goto done;
+        }
+    }
+done:
+    g_string_free(pending, TRUE);
+    return NULL;
+}
+
+void
+ns_nodectl_supervisor_listen(void)
+{
+    if (!g_sup_cmd_read || g_sup_thread) return;
+    GThread *t = g_thread_new("ns-nodectl", ns_nodectl_supervisor_thread, NULL);
+    g_sup_thread = (HANDLE)t;
+}
+
+void
+ns_nodectl_supervisor_close(void)
+{
+    if (g_sup_cmd_read)  { CloseHandle(g_sup_cmd_read);  g_sup_cmd_read = NULL; }
+    if (g_sup_rsp_write) { CloseHandle(g_sup_rsp_write); g_sup_rsp_write = NULL; }
+    if (g_sup_thread) {
+        g_thread_join((GThread *)g_sup_thread);
+        g_sup_thread = NULL;
+    }
+}
 
 static char *
 ns_nodectl_find_node(void)
@@ -89,9 +232,26 @@ ns_nodectl_child_processes_blocked(void)
     return (policy & 0x1u) != 0;
 }
 
+static gboolean
+ns_nodectl_client_handles(HANDLE *write_end, HANDLE *read_end)
+{
+    const char *value = g_getenv(NS_NODECTL_FD_ENV);
+    if (!value || !*value) return FALSE;
+    char *end = NULL;
+    guintptr w = (guintptr)g_ascii_strtoull(value, &end, 10);
+    if (!end || *end != ',') return FALSE;
+    guintptr r = (guintptr)g_ascii_strtoull(end + 1, &end, 10);
+    if (!end || *end || !w || !r) return FALSE;
+    *write_end = (HANDLE)w;
+    *read_end  = (HANDLE)r;
+    return TRUE;
+}
+
 gboolean
 ns_nodectl_available(void)
 {
+    HANDLE w = NULL, r = NULL;
+    if (ns_nodectl_client_handles(&w, &r)) return TRUE;
     if (ns_nodectl_child_processes_blocked()) return FALSE;
     g_autofree char *node = ns_nodectl_find_node();
     return node != NULL;
@@ -100,7 +260,52 @@ ns_nodectl_available(void)
 const char *
 ns_nodectl_mechanism(void)
 {
+    HANDLE w = NULL, r = NULL;
+    if (ns_nodectl_client_handles(&w, &r))
+        return "Northstar asks its supervisor process to run the node's own "
+               "service commands.";
     return "Northstar runs the node's own service commands.";
+}
+
+static gboolean
+ns_nodectl_ask_supervisor(const char *verb, char **output)
+{
+    HANDLE write_end = NULL, read_end = NULL;
+    if (!ns_nodectl_client_handles(&write_end, &read_end)) return FALSE;
+
+    static GMutex lock;
+    g_mutex_lock(&lock);
+
+    g_autofree char *request = g_strconcat(verb, "\n", NULL);
+    gboolean ok = ns_nodectl_write_all(write_end, request, strlen(request));
+
+    GString *reply = g_string_new(NULL);
+    while (ok && !strchr(reply->str, '\n')) {
+        char buf[512];
+        DWORD got = 0;
+        if (!ReadFile(read_end, buf, sizeof buf, &got, NULL) || got == 0) {
+            ok = FALSE;
+            break;
+        }
+        g_string_append_len(reply, buf, (gssize)got);
+        if (reply->len > NS_NODECTL_LINE_MAX) ok = FALSE;
+    }
+    g_mutex_unlock(&lock);
+
+    if (!ok) {
+        g_string_free(reply, TRUE);
+        if (output) *output = g_strdup("The supervisor did not answer.");
+        return FALSE;
+    }
+
+    char *nl = strchr(reply->str, '\n');
+    if (nl) *nl = '\0';
+    gboolean succeeded = g_str_has_prefix(reply->str, "ok");
+    const char *text = reply->str + (succeeded ? 2 : 3);
+    while (*text == ' ') text++;
+    if (output) *output = ns_nodectl_unescape(text);
+    g_string_free(reply, TRUE);
+    return succeeded;
 }
 
 gboolean
@@ -110,6 +315,17 @@ ns_nodectl_run(const char *verb, char **output)
     if (!ns_nodectl_verb_is_known(verb)) {
         if (output) *output = g_strdup("Unknown command.");
         return FALSE;
+    }
+
+    {
+        HANDLE w = NULL, r = NULL;
+        if (ns_nodectl_client_handles(&w, &r)) {
+            if (g_strcmp0(verb, "ping") == 0) {
+                if (output) *output = g_strdup("ok");
+                return TRUE;
+            }
+            return ns_nodectl_ask_supervisor(verb, output);
+        }
     }
 
     if (ns_nodectl_child_processes_blocked()) {
@@ -134,16 +350,30 @@ ns_nodectl_run(const char *verb, char **output)
         return TRUE;
     }
 
-    /* CreateProcessW rather than g_spawn_sync: GLib routes a Windows spawn
-     * through a gspawn-win64-helper binary, which fails from the packaged
-     * browser. watchdog.c starts its child the same way. */
+    gboolean ok = FALSE;
+    char *text = ns_nodectl_run_node_command(verb, &ok);
+    if (output) *output = text;
+    else        g_free(text);
+    return ok;
+}
+
+/* CreateProcessW rather than g_spawn_sync: GLib routes a Windows spawn
+ * through a gspawn-win64-helper binary, which is itself a child process.
+ * watchdog.c starts its child the same way. */
+static char *
+ns_nodectl_run_node_command(const char *verb, gboolean *ok)
+{
+    *ok = FALSE;
+    g_autofree char *node = ns_nodectl_find_node();
+    if (!node)
+        return g_strdup("No freenet executable was found. Install a node "
+                        "from freenet.org, or put freenet.exe on PATH.");
+
     g_autofree wchar_t *app = g_utf8_to_utf16(node, -1, NULL, NULL, NULL);
     g_autofree char *line = g_strdup_printf("\"%s\" service %s", node, verb);
     g_autofree wchar_t *cmd = g_utf8_to_utf16(line, -1, NULL, NULL, NULL);
-    if (!app || !cmd) {
-        if (output) *output = g_strdup("Could not build the node command.");
-        return FALSE;
-    }
+    if (!app || !cmd)
+        return g_strdup("Could not build the node command.");
 
     SECURITY_ATTRIBUTES sa;
     memset(&sa, 0, sizeof sa);
@@ -151,10 +381,8 @@ ns_nodectl_run(const char *verb, char **output)
     sa.bInheritHandle = TRUE;
 
     HANDLE read_end = NULL, write_end = NULL;
-    if (!CreatePipe(&read_end, &write_end, &sa, 0)) {
-        if (output) *output = g_strdup("Could not open a pipe to the node.");
-        return FALSE;
-    }
+    if (!CreatePipe(&read_end, &write_end, &sa, 0))
+        return g_strdup("Could not open a pipe to the node.");
     SetHandleInformation(read_end, HANDLE_FLAG_INHERIT, 0);
 
     STARTUPINFOW si;
@@ -175,10 +403,8 @@ ns_nodectl_run(const char *verb, char **output)
     if (!started) {
         CloseHandle(read_end);
         g_autofree char *msg = g_win32_error_message((gint)spawn_error);
-        if (output)
-            *output = g_strdup_printf("Could not run %s service %s: %s",
-                                      node, verb, msg ? msg : "failed");
-        return FALSE;
+        return g_strdup_printf("Could not run %s service %s: %s",
+                               node, verb, msg ? msg : "failed");
     }
 
     GString *text = g_string_new(NULL);
@@ -197,14 +423,14 @@ ns_nodectl_run(const char *verb, char **output)
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
 
+    if (text->len > NS_NODECTL_OUTPUT_MAX)
+        g_string_truncate(text, NS_NODECTL_OUTPUT_MAX);
     g_strstrip(text->str);
     g_string_set_size(text, strlen(text->str));
+    *ok = code == 0;
     if (!text->len)
-        g_string_append(text, code == 0 ? "done"
-                                        : "the node reported no output");
-    if (output) *output = g_string_free(text, FALSE);
-    else        g_string_free(text, TRUE);
-    return code == 0;
+        g_string_append(text, *ok ? "done" : "the node reported no output");
+    return g_string_free(text, FALSE);
 }
 
 #else
@@ -213,36 +439,6 @@ static int     g_supervisor_fd = -1;
 static int     g_supervisor_peer_fd = -1;
 static GString *g_supervisor_buf;
 
-static char *
-ns_nodectl_escape(const char *text)
-{
-    GString *out = g_string_new(NULL);
-    for (const char *p = text ? text : ""; *p; p++) {
-        if (*p == '\\')      g_string_append(out, "\\\\");
-        else if (*p == '\n') g_string_append(out, "\\n");
-        else if (*p == '\r') continue;
-        else                 g_string_append_c(out, *p);
-    }
-    return g_string_free(out, FALSE);
-}
-
-static char *
-ns_nodectl_unescape(const char *text)
-{
-    GString *out = g_string_new(NULL);
-    for (const char *p = text ? text : ""; *p; p++) {
-        if (*p != '\\') {
-            g_string_append_c(out, *p);
-            continue;
-        }
-        p++;
-        if (*p == 'n')       g_string_append_c(out, '\n');
-        else if (*p == '\\') g_string_append_c(out, '\\');
-        else if (!*p)        break;
-        else                 g_string_append_c(out, *p);
-    }
-    return g_string_free(out, FALSE);
-}
 
 static char *
 ns_nodectl_find_node(void)
