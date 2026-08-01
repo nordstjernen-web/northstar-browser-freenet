@@ -28,6 +28,16 @@ Significant changes in each release:
   River is sandboxed without network access of its own and proxies its
   WebSocket through the shell that frames it, so every request it made was
   dropped in silence.
+* A contract's WebSocket reaches the node from a framed context too. The
+  Freenet manual tells applications to derive the address from
+  `location`, which under this scheme yields `ws://<contract-key>/…`, and
+  `ws:` being a special scheme means the URL parser has lowercased the key
+  by the time the socket is created -- base58 is case-sensitive, so the
+  document's own key could no longer be matched against it whenever the
+  socket was opened somewhere the document URL was not to hand. Such a
+  host is now resolved case-insensitively against the contracts the node
+  reports, cached briefly, and only for hosts long enough to be a key, so
+  an ordinary hostname costs nothing.
 * A Freenet page is recorded in browsing history. Only `http` and `https`
   addresses were, so a `freenet:` address could be typed, linked and
   bookmarked but never turned up in `about:history` afterwards -- the one

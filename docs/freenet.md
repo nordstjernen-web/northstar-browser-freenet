@@ -5,7 +5,8 @@ is typed into the address bar, linked to from a page, bookmarked, kept in
 history and restored with a session the same way an `https:` address is,
 and the page it loads gets its own origin rather than borrowing one.
 
-See: https://github.com/freenet/freenet-core/
+Reference: the [Freenet manual](https://freenet.org/build/manual/) and
+[freenet-core](https://github.com/freenet/freenet-core/).
 
     freenet://3ZZ98ojKWUJsixNyJsgRwkBZhLxN4CV2Z5AT8dVWJh48/
 
@@ -132,6 +133,30 @@ new WebSocket('/v1/contract/command')
 resolves to `ws://127.0.0.1:7509/v1/contract/command`, so an application
 built with `freenet-stdlib` that derives its WebSocket URL from
 `location` connects without modification.
+
+## What the manual requires
+
+The conventions an application may rely on are set out in the
+[Freenet manual](https://freenet.org/build/manual/) — in particular
+[User Interfaces](https://freenet.org/build/manual/components/ui/),
+[the TypeScript SDK](https://freenet.org/build/manual/typescript-sdk/) and
+[Publish a Website](https://freenet.org/build/manual/publish-a-website/).
+Measured against them:
+
+| The manual says | Here |
+| --- | --- |
+| "Derive the URL from the page location rather than hardcoding a host or port" — `ws://{location.host}/v1/contract/command` | **Yes.** `location.host` is the contract key, so that yields `ws://<key>/…`; such a socket is recognised and sent to the node |
+| Internal links absolute against `/v1/contract/web/<key>/` | **Yes.** Collapsed to the address they name |
+| Assets resolved relative to the container URL (`base: "./"`) | **Yes.** Relative to the contract, since the key is the host |
+| Contracts addressed by base58 instance id | **Yes**, including shortened prefixes |
+| UI served inside a sandboxed iframe under a strict CSP | **Partly.** The frame renders and its own policy applies, and a policy written in the gateway's origin is translated. But an app whose socket is proxied by the shell rather than opened directly does not yet connect |
+| "The shell injects auth" | **Not implemented.** The mechanism is undocumented, and the browser is not a party to it |
+
+The last two are the same gap seen from two sides, and it is why an
+application like River paints but does not come alive: it is sandboxed
+without network access of its own and hands its WebSocket to the shell
+that frames it, so the socket the browser sees is never the one the app
+asked for. Static sites, and apps that open their own socket, work.
 
 ## The Rust component
 

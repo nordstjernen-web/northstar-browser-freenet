@@ -30,6 +30,8 @@ char *ns_freenet_with_key(const char *url, const char *key);
 char *ns_freenet_find_key_with_prefix(const guint8 *data, gsize len,
                                       const char *prefix);
 GByteArray *ns_freenet_node_diagnostics(void);
+void  ns_freenet_collect_keys(const guint8 *data, gsize len, GPtrArray *out);
+char *ns_freenet_known_contract_for_host(const char *host);
 
 G_END_DECLS
 

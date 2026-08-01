@@ -303,23 +303,22 @@ ns_freenet_match_prefix(const char *const *ids, const char *prefix)
     return found;
 }
 
-char *
-ns_freenet_find_key_with_prefix(const guint8 *data, gsize len,
-                                const char *prefix)
+void
+ns_freenet_collect_keys(const guint8 *data, gsize len, GPtrArray *out)
 {
-    if (!data || !len || !prefix || !*prefix) return NULL;
+    if (!data || !len || !out) return;
 
 #ifdef NS_HAVE_FREENET_RS
     char *decoded = ns_freenet_rs_contract_ids(data, len);
     if (decoded) {
         g_auto(GStrv) ids = g_strsplit(decoded, "\n", -1);
         ns_freenet_rs_free_string(decoded);
-        return ns_freenet_match_prefix((const char *const *)ids, prefix);
+        for (int i = 0; ids[i]; i++)
+            if (ns_freenet_key_is_full(ids[i]))
+                g_ptr_array_add(out, g_strdup(ids[i]));
+        return;
     }
 #endif
-
-    size_t prefix_len = strlen(prefix);
-    char *found = NULL;
 
     for (gsize i = 0; i < len; ) {
         if (!ns_freenet_is_base58(data[i])) { i++; continue; }
@@ -327,22 +326,51 @@ ns_freenet_find_key_with_prefix(const guint8 *data, gsize len,
         while (i < len && ns_freenet_is_base58(data[i])) i++;
         gsize run = i - start;
         if (run < 32 || run > 64) continue;
-        if (run < prefix_len) continue;
-        if (strncmp((const char *)data + start, prefix, prefix_len) != 0)
-            continue;
+        g_ptr_array_add(out, g_strndup((const char *)data + start, run));
+    }
+}
 
-        char *candidate = g_strndup((const char *)data + start, run);
-        if (!found) {
-            found = candidate;
-        } else if (strcmp(found, candidate) != 0) {
-            g_free(candidate);
-            g_free(found);
-            return NULL;
-        } else {
-            g_free(candidate);
+char *
+ns_freenet_find_key_with_prefix(const guint8 *data, gsize len,
+                                const char *prefix)
+{
+    if (!data || !len || !prefix || !*prefix) return NULL;
+
+    g_autoptr(GPtrArray) keys = g_ptr_array_new_with_free_func(g_free);
+    ns_freenet_collect_keys(data, len, keys);
+    g_ptr_array_add(keys, NULL);
+    return ns_freenet_match_prefix((const char *const *)keys->pdata, prefix);
+}
+
+static GPtrArray *g_known_contracts;
+static gint64    g_known_contracts_at;
+
+#define NS_FREENET_CONTRACT_CACHE_US (30 * G_USEC_PER_SEC)
+
+char *
+ns_freenet_known_contract_for_host(const char *host)
+{
+    if (!host || strlen(host) < 32 || strlen(host) > 64) return NULL;
+
+    gint64 now = g_get_monotonic_time();
+    if (!g_known_contracts || now - g_known_contracts_at > NS_FREENET_CONTRACT_CACHE_US) {
+        GByteArray *diagnostics = ns_freenet_node_diagnostics();
+        if (g_known_contracts) g_ptr_array_unref(g_known_contracts);
+        g_known_contracts = g_ptr_array_new_with_free_func(g_free);
+        g_known_contracts_at = now;
+        if (diagnostics) {
+            ns_freenet_collect_keys(diagnostics->data, diagnostics->len,
+                                    g_known_contracts);
+            g_byte_array_free(diagnostics, TRUE);
         }
     }
-    return found;
+
+    for (guint i = 0; i < g_known_contracts->len; i++) {
+        const char *candidate = g_ptr_array_index(g_known_contracts, i);
+        if (g_ascii_strcasecmp(candidate, host) == 0)
+            return g_strdup(candidate);
+    }
+    return NULL;
 }
 
 char *
@@ -370,8 +398,10 @@ ns_freenet_localize_origin(const char *target, const char *doc_url)
     g_autofree char *host = g_strndup(authority, host_len);
 
     g_autofree char *key = ns_freenet_key_of(doc_url);
-    if (!key || g_ascii_strcasecmp(host, key) != 0)
-        return NULL;
+    if (!key || g_ascii_strcasecmp(host, key) != 0) {
+        g_autofree char *known = ns_freenet_known_contract_for_host(host);
+        if (!known) return NULL;
+    }
 
     const char *rest = authority + host_len;
     rest += strcspn(rest, "/?#");
