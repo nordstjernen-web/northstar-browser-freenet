@@ -26,6 +26,9 @@ char *ns_freenet_from_gateway(const char *url);
 char *ns_freenet_localize_csp(const char *csp, const char *url);
 char *ns_freenet_node_error(long status, const guint8 *body, gsize len);
 char *ns_freenet_localize_origin(const char *target, const char *doc_url);
+char *ns_freenet_with_key(const char *url, const char *key);
+char *ns_freenet_find_key_with_prefix(const guint8 *data, gsize len,
+                                      const char *prefix);
 
 G_END_DECLS
 

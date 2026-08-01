@@ -53,12 +53,24 @@ decodes and pads what it was handed, arriving at an unrelated key, and
 answers "not found". This is verifiable: the prefix of a contract the
 node demonstrably holds fails exactly the same way.
 
-So a shortened address cannot be opened until it is completed, and
-Northstar says so specifically rather than reporting a generic failure.
-Expanding a prefix would mean asking the node which contracts it knows,
-which is a client-API operation over the WebSocket rather than anything
-the HTTP gateway exposes; the node's own dashboard is where those full
-keys can be read today.
+Completing the address is therefore the client's job, and Northstar does
+it: before a short address is fetched, the node is asked which contracts
+it knows and the one beginning with the given characters is used
+(`ns_freenet_expand_prefix` in `src/net.c`). The address bar then shows
+the expanded form, so what is bookmarked and shared is the whole key.
+
+Expansion is deliberately conservative. A prefix that matches nothing, or
+that matches more than one contract, is left exactly as it was and the
+error page explains that the address is shortened — guessing between two
+contracts would be worse than not resolving at all.
+
+A prefix can only be completed against contracts the node has seen; the
+network is content-addressed and cannot be searched by prefix, so an
+address for a contract your node has never encountered stays
+unresolvable until you have its whole key. Note also that this reads the
+node's own front page, which is where those keys are published today
+rather than through a dedicated endpoint; a node that stops listing them
+there would stop expanding, without affecting full addresses.
 
 Only one place applies a stricter rule: a bare string typed into the
 address bar with no `freenet:` prefix is treated as a contract key only

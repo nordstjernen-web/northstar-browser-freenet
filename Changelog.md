@@ -28,17 +28,19 @@ Significant changes in each release:
   River is sandboxed without network access of its own and proxies its
   WebSocket through the shell that frames it, so every request it made was
   dropped in silence.
-* A shortened Freenet address is named for what it is. Addresses are
-  commonly passed around cut to their first few characters --
-  `freenet:EqJ5YpEE` for
+* A shortened Freenet address opens. Addresses are commonly passed
+  around cut to their first few characters -- `freenet:EqJ5YpEE` for
   `freenet://EqJ5YpEEV3XLqEvKWLQHFhGAac2qXzSUoE6k2zbdnXBr/` -- and these
   are real addresses, not typos. A node's web gateway resolves whole keys
-  only, though: handed a prefix it decodes and pads it into an unrelated
-  key and reports that as missing, which a prefix of a contract the node
-  demonstrably holds reproduces exactly. The page for one now says the
-  address is shortened and needs completing, and points at the node's
-  dashboard, where the full keys can be read -- rather than blaming the
-  address, or advising a wait that would never end.
+  only: handed a prefix it decodes and pads it into an unrelated key and
+  reports that as missing, which a prefix of a contract the node
+  demonstrably holds reproduces exactly. Completing the address is
+  therefore the client's job, and the browser now does it, asking the node
+  which contracts it knows and taking the one that begins with what it was
+  given. A prefix matching nothing, or matching more than one contract, is
+  left alone and the page says the address is shortened and where its full
+  form can be read -- rather than blaming the address, or advising a wait
+  that would never end.
 * A WebSocket a contract opens against its own origin reaches the node.
   Freenet applications derive the address from `location`, as the
   documentation tells them to, which under this scheme yields

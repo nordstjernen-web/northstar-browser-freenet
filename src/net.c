@@ -5396,6 +5396,26 @@ ns_fetch_is_navigation(const char *top_url, GPtrArray *extra_headers)
     return FALSE;
 }
 
+static char *
+ns_freenet_expand_prefix(const char *prefix, GCancellable *cancellable)
+{
+    g_autofree char *base = ns_freenet_gateway_base(FALSE);
+    if (!base) return NULL;
+    g_autofree char *home = g_strconcat(base, "/", NULL);
+
+    ns_response *listing =
+        ns_fetch_sync_hop(home, NULL, "GET", NULL, 0, NULL, NULL,
+                          cancellable, NULL, FALSE, NULL, FALSE, FALSE);
+    if (!listing) return NULL;
+
+    char *full = NULL;
+    if (listing->status == 200 && listing->body && listing->body->len)
+        full = ns_freenet_find_key_with_prefix(listing->body->data,
+                                               listing->body->len, prefix);
+    ns_response_free(listing);
+    return full;
+}
+
 static ns_response *
 ns_fetch_sync(const char *url, const char *top_url, const char *method,
               const void *body, gsize body_len, const char *content_type,
@@ -5446,7 +5466,17 @@ ns_fetch_sync(const char *url, const char *top_url, const char *method,
 
     g_autofree char *freenet_url = NULL;
     g_autofree char *gateway_url = NULL;
+    g_autofree char *expanded_url = NULL;
     if (ns_freenet_is_url(url)) {
+        g_autofree char *short_key = ns_freenet_key_of(url);
+        if (short_key && !ns_freenet_key_is_full(short_key)) {
+            g_autofree char *full_key =
+                ns_freenet_expand_prefix(short_key, cancellable);
+            if (full_key) {
+                expanded_url = ns_freenet_with_key(url, full_key);
+                if (expanded_url) url = expanded_url;
+            }
+        }
         gateway_url = ns_freenet_to_gateway(url);
         if (!gateway_url) {
             ns_response *bad = g_new0(ns_response, 1);

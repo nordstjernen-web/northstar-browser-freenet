@@ -168,6 +168,50 @@ ns_freenet_to_gateway_ws(const char *url)
 }
 
 char *
+ns_freenet_with_key(const char *url, const char *key)
+{
+    char *old_key = NULL, *rest = NULL;
+    if (!ns_freenet_split(url, &old_key, &rest)) return NULL;
+    char *out = g_strconcat("freenet://", key, "/", rest, NULL);
+    g_free(old_key);
+    g_free(rest);
+    return out;
+}
+
+char *
+ns_freenet_find_key_with_prefix(const guint8 *data, gsize len,
+                                const char *prefix)
+{
+    if (!data || !len || !prefix || !*prefix) return NULL;
+
+    size_t prefix_len = strlen(prefix);
+    char *found = NULL;
+
+    for (gsize i = 0; i < len; ) {
+        if (!strchr(ns_freenet_base58, data[i])) { i++; continue; }
+        gsize start = i;
+        while (i < len && strchr(ns_freenet_base58, data[i])) i++;
+        gsize run = i - start;
+        if (run < 32 || run > 64) continue;
+        if (run < prefix_len) continue;
+        if (strncmp((const char *)data + start, prefix, prefix_len) != 0)
+            continue;
+
+        char *candidate = g_strndup((const char *)data + start, run);
+        if (!found) {
+            found = candidate;
+        } else if (strcmp(found, candidate) != 0) {
+            g_free(candidate);
+            g_free(found);
+            return NULL;
+        } else {
+            g_free(candidate);
+        }
+    }
+    return found;
+}
+
+char *
 ns_freenet_localize_origin(const char *target, const char *doc_url)
 {
     if (!target) return NULL;
