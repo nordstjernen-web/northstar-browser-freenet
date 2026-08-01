@@ -13,10 +13,37 @@
 
 #define NS_FREENET_SCHEME_LEN 8
 #define NS_FREENET_WEB_PATH   "v1/contract/web/"
-#define NS_FREENET_API_PATH   "v1/"
+#define NS_FREENET_WEB_TAIL   "contract/web/"
+
+static const char *const ns_freenet_api_versions[] = { "v1/", "v2/", NULL };
+
+static const char *const ns_freenet_node_paths[] = {
+    "v1/", "v2/", "permission/", "freenet-notify-sw.js", NULL
+};
 
 static const char ns_freenet_base58[] =
     "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+static const char *
+ns_freenet_after_web_prefix(const char *path)
+{
+    for (int i = 0; ns_freenet_api_versions[i]; i++) {
+        if (!g_str_has_prefix(path, ns_freenet_api_versions[i])) continue;
+        const char *rest = path + strlen(ns_freenet_api_versions[i]);
+        if (g_str_has_prefix(rest, NS_FREENET_WEB_TAIL))
+            return rest + strlen(NS_FREENET_WEB_TAIL);
+    }
+    return NULL;
+}
+
+static gboolean
+ns_freenet_path_belongs_to_node(const char *path)
+{
+    for (int i = 0; ns_freenet_node_paths[i]; i++)
+        if (g_str_has_prefix(path, ns_freenet_node_paths[i]))
+            return TRUE;
+    return FALSE;
+}
 
 static gboolean
 ns_freenet_is_base58(guint8 c)
@@ -111,10 +138,9 @@ ns_freenet_split(const char *url, char **key_out, char **rest_out)
 
     if (!ns_freenet_take_key(p, key_out, rest_out)) return FALSE;
 
-    while (g_str_has_prefix(*rest_out, NS_FREENET_WEB_PATH)) {
+    for (const char *inner; (inner = ns_freenet_after_web_prefix(*rest_out)); ) {
         char *inner_key = NULL, *inner_rest = NULL;
-        if (!ns_freenet_take_key(*rest_out + strlen(NS_FREENET_WEB_PATH),
-                                 &inner_key, &inner_rest))
+        if (!ns_freenet_take_key(inner, &inner_key, &inner_rest))
             break;
         g_free(*key_out);
         g_free(*rest_out);
@@ -153,7 +179,7 @@ ns_freenet_map(const char *url, gboolean websocket)
     char *base = ns_freenet_gateway_base(websocket);
     char *out = NULL;
     if (base)
-        out = g_str_has_prefix(rest, NS_FREENET_API_PATH)
+        out = ns_freenet_path_belongs_to_node(rest)
             ? g_strconcat(base, "/", rest, NULL)
             : g_strconcat(base, "/", NS_FREENET_WEB_PATH, key, "/", rest, NULL);
 
@@ -342,8 +368,9 @@ ns_freenet_find_key_with_prefix(const guint8 *data, gsize len,
     return ns_freenet_match_prefix((const char *const *)keys->pdata, prefix);
 }
 
+static GMutex     g_known_contracts_lock;
 static GPtrArray *g_known_contracts;
-static gint64    g_known_contracts_at;
+static gint64     g_known_contracts_at;
 
 #define NS_FREENET_CONTRACT_CACHE_US (30 * G_USEC_PER_SEC)
 
@@ -352,31 +379,36 @@ ns_freenet_known_contract_for_host(const char *host)
 {
     if (!host || strlen(host) < 32 || strlen(host) > 64) return NULL;
 
+    g_mutex_lock(&g_known_contracts_lock);
     gint64 now = g_get_monotonic_time();
     if (!g_known_contracts || now - g_known_contracts_at > NS_FREENET_CONTRACT_CACHE_US) {
+        g_mutex_unlock(&g_known_contracts_lock);
         GByteArray *diagnostics = ns_freenet_node_diagnostics();
-        if (g_known_contracts) g_ptr_array_unref(g_known_contracts);
-        g_known_contracts = g_ptr_array_new_with_free_func(g_free);
-        g_known_contracts_at = now;
+        GPtrArray *fresh = g_ptr_array_new_with_free_func(g_free);
         if (diagnostics) {
-            ns_freenet_collect_keys(diagnostics->data, diagnostics->len,
-                                    g_known_contracts);
+            ns_freenet_collect_keys(diagnostics->data, diagnostics->len, fresh);
             g_byte_array_free(diagnostics, TRUE);
         }
+        g_mutex_lock(&g_known_contracts_lock);
+        if (g_known_contracts) g_ptr_array_unref(g_known_contracts);
+        g_known_contracts = fresh;
+        g_known_contracts_at = g_get_monotonic_time();
     }
 
-    for (guint i = 0; i < g_known_contracts->len; i++) {
+    char *found = NULL;
+    for (guint i = 0; i < g_known_contracts->len && !found; i++) {
         const char *candidate = g_ptr_array_index(g_known_contracts, i);
         if (g_ascii_strcasecmp(candidate, host) == 0)
-            return g_strdup(candidate);
+            found = g_strdup(candidate);
     }
-    return NULL;
+    g_mutex_unlock(&g_known_contracts_lock);
+    return found;
 }
 
 char *
 ns_freenet_localize_origin(const char *target, const char *doc_url)
 {
-    if (!target) return NULL;
+    if (!target || !ns_freenet_is_url(doc_url)) return NULL;
 
     static const struct { const char *scheme; gboolean websocket; } schemes[] = {
         { "ws://", TRUE }, { "wss://", TRUE },
@@ -467,16 +499,12 @@ ns_freenet_from_gateway(const char *url)
 {
     if (!url) return NULL;
 
-    char *base = ns_freenet_gateway_base(FALSE);
+    g_autofree char *base = ns_freenet_gateway_base(FALSE);
     if (!base) return NULL;
-    char *prefix = g_strconcat(base, "/", NS_FREENET_WEB_PATH, NULL);
-    g_free(base);
-    gboolean matched = g_str_has_prefix(url, prefix);
-    size_t prefix_len = strlen(prefix);
-    g_free(prefix);
-    if (!matched) return NULL;
+    if (!g_str_has_prefix(url, base) || url[strlen(base)] != '/') return NULL;
 
-    const char *p = url + prefix_len;
+    const char *p = ns_freenet_after_web_prefix(url + strlen(base) + 1);
+    if (!p) return NULL;
     const char *end = p + strcspn(p, "/?#");
     if (end == p) return NULL;
 
