@@ -4,6 +4,36 @@ Significant changes in each release:
 
 1.0.7:
 ======
+* The toolbar says whether a Freenet node is there. A dot beside the
+  bookmark star is dim when nothing answers at the gateway, amber when
+  the node is running but has found no peers -- the state in which every
+  address fails and nothing on the page explains why -- and green with
+  the peer count once it has joined. One request to the gateway root
+  every twenty seconds, on a worker thread, which against no node is a
+  refused loopback connection and costs nothing.
+* A Freenet node console at `about:freenet`, from that dot or from
+  Menu -> Freenet Node Console. It reports the gateway, whether the node
+  answers, its peers, contracts, uptime and peer id, and starts, stops or
+  restarts the node. Refused to web content, as `about:settings` and
+  `about:history` are.
+* The console does not start a node itself and does not supervise one: a
+  node updates itself by exiting with code 42 and waiting to be
+  restarted, so it belongs to systemd or launchd and a second supervisor
+  would fight the first. The buttons run `freenet service start`, the
+  command the node's own documentation gives, and print what it says --
+  including the advice to use `--system` with sudo.
+  The browser cannot run it: `execve` is not in the seccomp allow-list
+  and Landlock grants execute only under `/usr` and `/lib`, while the
+  installer puts the node in `~/.local/bin`. The watchdog, which is
+  outside the sandbox, runs it instead, over a socketpair opened before
+  the browser is spawned. One verb per line, five verbs accepted, no
+  argument crossing the channel, and the whole surface absent when the
+  browser runs without its supervisor.
+* The node's own peer count, contract count, uptime and peer id come
+  from the client API through freenet-stdlib, so a build without the
+  Rust component -- or on a libcurl with no WebSocket protocol -- still
+  reports whether the node is up, and says the rest is unavailable
+  rather than inventing it.
 * A frame sees its own parent as the source of a message the parent sent
   it. `event.source` carried the parent's raw global object instead, so
   the identity check every postMessage bridge opens with --

@@ -390,6 +390,62 @@ than the "not encrypted" warning the underlying loopback HTTP transfer
 would otherwise earn. Contract content is content-addressed and signed,
 and the transfer never leaves the machine.
 
+## Watching the node, and starting it
+
+Two pieces of chrome exist because a browser that depends on a local
+daemon should say whether the daemon is there.
+
+A **dot in the toolbar** carries the node's state: dim when nothing
+answers at the gateway, amber when the node is running but has found no
+peers — the state in which every address fails and nothing explains why —
+and green with the peer count beside it once it has joined. Its tooltip
+spells the same thing out. It is one request to the gateway root every
+twenty seconds, made on a worker thread; when no node is listening that
+is a refused connection on loopback and costs nothing. Clicking it opens
+the console.
+
+The **Freenet node console** is `about:freenet`, reached from that dot or
+from **Menu → Freenet Node Console**. It reports the gateway, whether the
+node answers, its peer count, how many contracts it holds, its uptime and
+its peer id, and it has buttons for **start**, **stop**, **restart** and
+**service status**. Like `about:settings` and `about:history` it is
+refused to web content — a page that fetches `about:freenet-control` gets
+403, which matters more here than for the others.
+
+### Why the supervisor runs the command
+
+Northstar does not start the node itself and does not supervise it: a
+Freenet node is meant to be run by systemd or launchd, because it updates
+itself by exiting with code 42 and waiting to be restarted. A second
+supervisor would fight the first and an unsupervised node stops updating.
+So the console does not spawn a node — it runs `freenet service start`,
+the command the node's own documentation gives, and lets the platform's
+service manager do what it already does.
+
+It cannot run that command itself. The browser process is sandboxed:
+`execve` is not in the seccomp allow-list (`src/security.c`), and Landlock
+grants execute only under `/usr` and `/lib`, while the installer puts the
+node in `~/.local/bin`. The **watchdog** — the supervisor that launches
+the browser and restarts it on a crash — is outside that sandbox, so it
+is the process that runs the command.
+
+The two are joined by a socketpair created before the browser is spawned,
+whose child end is passed down in `NS_NODE_CONTROL_FD`
+(`src/nodectl.c`). The browser writes one verb per line and reads one
+reply line back; the supervisor accepts only `ping`, `status`, `start`,
+`stop` and `restart`, and the browser refuses anything else before
+sending it. No argument crosses the channel — the verb selects a fixed
+command line, so there is nothing for page content to inject into even if
+it could reach the endpoint. The reply carries the command's own output,
+which is what the console prints, so `sudo freenet service start
+--system` advice from the node reaches the user unedited.
+
+When the browser runs without its supervisor — `--no-watchdog`, or any
+headless invocation — there is no channel, the buttons are disabled, and
+the console says why. On Windows the channel is not built: the installer
+registers a Windows service with a tray icon that already offers start
+and stop.
+
 ## Configuration
 
 The node's gateway address is a single setting. It is the host and port
@@ -446,7 +502,9 @@ HTTP (`classify_error` in `src/net.c`):
 | `src/freenet.c`, `src/freenet.h` | The scheme: key validation, canonicalisation, gateway mapping in both directions |
 | `src/net.c` | Fetch translation, origin, error pages, the `about:settings` field |
 | `src/js.c` | WebSocket URL mapping, navigation scheme allow-list, the frame's view of its parent as a message source |
-| `src/gtk/procwindow.c` | Address-bar normalisation, gateway URLs resolved to addresses, security indicator, session restore |
+| `src/gtk/procwindow.c` | Address-bar normalisation, gateway URLs resolved to addresses, security indicator, session restore, the node dot and the console's menu entry |
+| `src/nodectl.c`, `src/nodectl.h` | The channel from the browser to its supervisor, and the service commands the supervisor runs |
+| `src/watchdog.c` | Opens that channel before spawning the browser |
 | `src/config.c`, `src/config.h` | The `freenet_gateway` setting |
 | `src/history.c` | Recording `freenet:` visits alongside `http`/`https` |
 | `rust/ns-freenet/` | Client-protocol encoding over freenet-stdlib, behind a C ABI |
@@ -489,7 +547,8 @@ carries the install command rather than a link to go and find it.
 
 The whole of setup is one step per platform, and it ends with a node
 running as a background service on `127.0.0.1:7509` — the address
-Northstar looks for by default.
+Northstar looks for by default. Once a node has been installed once,
+**Menu → Freenet Node Console** starts and stops it without a terminal.
 
 | Platform | Install |
 | --- | --- |
