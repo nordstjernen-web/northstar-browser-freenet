@@ -103,6 +103,7 @@ northstar_engine_sources = files(
   'mathml.c',
   'net.c',
   'netutil.c',
+  'nodectl.c',
   'paint.c',
   'render.c',
   'safebrowsing.c',

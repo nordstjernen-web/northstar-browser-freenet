@@ -5,6 +5,7 @@
 
 #include "watchdog.h"
 #include "debuglog.h"
+#include "nodectl.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -198,6 +199,7 @@ typedef struct {
     int         burst_count;
     gint64      burst_start_us;
     int         exit_status;
+    int         node_control_fd;
 } ns_watchdog;
 
 static void
@@ -472,8 +474,16 @@ ns_watchdog_spawn(ns_watchdog *wd, gboolean recover)
         envp = g_environ_setenv(envp, NS_WATCHDOG_RECOVER_ENV, "1", TRUE);
     else
         envp = g_environ_unsetenv(envp, NS_WATCHDOG_RECOVER_ENV);
-    gboolean ok = g_spawn_async(NULL, wd->child_argv, envp,
-                                G_SPAWN_DO_NOT_REAP_CHILD,
+    GSpawnFlags flags = G_SPAWN_DO_NOT_REAP_CHILD;
+    if (wd->node_control_fd >= 0) {
+        char *fd_value = g_strdup_printf("%d", wd->node_control_fd);
+        envp = g_environ_setenv(envp, NS_NODECTL_FD_ENV, fd_value, TRUE);
+        g_free(fd_value);
+        flags |= G_SPAWN_LEAVE_DESCRIPTORS_OPEN;
+    } else {
+        envp = g_environ_unsetenv(envp, NS_NODECTL_FD_ENV);
+    }
+    gboolean ok = g_spawn_async(NULL, wd->child_argv, envp, flags,
                                 NULL, NULL, &pid, &err);
     g_strfreev(envp);
 #endif
@@ -559,6 +569,9 @@ ns_watchdog_run_supervisor(const char *self_exe, int argc, char **argv)
                                                  wd.session_path);
     wd.loop = g_main_loop_new(NULL, FALSE);
     wd.burst_start_us = g_get_monotonic_time();
+    wd.node_control_fd = ns_nodectl_supervisor_open();
+    if (wd.node_control_fd >= 0)
+        ns_nodectl_supervisor_listen();
 
 #ifndef G_OS_WIN32
     g_unix_signal_add(SIGINT, ns_watchdog_signal_cb, &wd);
@@ -576,6 +589,7 @@ ns_watchdog_run_supervisor(const char *self_exe, int argc, char **argv)
         g_spawn_close_pid(wd.pid);
     }
     g_main_loop_unref(wd.loop);
+    ns_nodectl_supervisor_close();
     g_unlink(wd.session_path);
     g_strfreev(wd.child_argv);
     g_free(wd.session_path);
