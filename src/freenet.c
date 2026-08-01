@@ -9,6 +9,7 @@
 #include "ws.h"
 
 #include <curl/curl.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define NS_FREENET_SCHEME_LEN 8
@@ -203,10 +204,17 @@ ns_freenet_to_gateway_ws(const char *url)
 
 #ifdef NS_HAVE_FREENET_RS
 guint8 *ns_freenet_rs_contract_query(gsize *len);
+guint8 *ns_freenet_rs_status_query(gsize *len);
 char   *ns_freenet_rs_contract_ids(const guint8 *data, gsize len);
+char   *ns_freenet_rs_status_text(const guint8 *data, gsize len);
 void    ns_freenet_rs_free(guint8 *ptr, gsize len);
 void    ns_freenet_rs_free_string(char *ptr);
 #endif
+
+typedef enum {
+    NS_FREENET_QUERY_CONTRACTS,
+    NS_FREENET_QUERY_STATUS,
+} ns_freenet_query;
 
 static void
 ns_freenet_put_u32(GByteArray *out, guint32 v)
@@ -216,11 +224,13 @@ ns_freenet_put_u32(GByteArray *out, guint32 v)
 }
 
 static GByteArray *
-ns_freenet_diagnostics_request(void)
+ns_freenet_diagnostics_request(ns_freenet_query which)
 {
 #ifdef NS_HAVE_FREENET_RS
     gsize encoded_len = 0;
-    guint8 *encoded = ns_freenet_rs_contract_query(&encoded_len);
+    guint8 *encoded = which == NS_FREENET_QUERY_STATUS
+        ? ns_freenet_rs_status_query(&encoded_len)
+        : ns_freenet_rs_contract_query(&encoded_len);
     if (encoded) {
         GByteArray *from_stdlib = g_byte_array_new();
         g_byte_array_append(from_stdlib, encoded, (guint)encoded_len);
@@ -228,13 +238,13 @@ ns_freenet_diagnostics_request(void)
         return from_stdlib;
     }
 #endif
+    const guint8 no = 0, yes = 1;
+    const guint8 want_node = which == NS_FREENET_QUERY_STATUS ? yes : no;
     GByteArray *req = g_byte_array_new();
-    const guint8 no = 0;
     ns_freenet_put_u32(req, 4);
     ns_freenet_put_u32(req, 2);
-    g_byte_array_append(req, &no, 1);
-    g_byte_array_append(req, &no, 1);
-    const guint8 yes = 1;
+    g_byte_array_append(req, &want_node, 1);
+    g_byte_array_append(req, &want_node, 1);
     g_byte_array_append(req, &yes, 1);
     for (int i = 0; i < 8; i++) g_byte_array_append(req, &no, 1);
     g_byte_array_append(req, &no, 1);
@@ -243,8 +253,8 @@ ns_freenet_diagnostics_request(void)
     return req;
 }
 
-GByteArray *
-ns_freenet_node_diagnostics(void)
+static GByteArray *
+ns_freenet_node_query(ns_freenet_query which)
 {
     if (!ns_ws_available()) return NULL;
 
@@ -268,7 +278,7 @@ ns_freenet_node_diagnostics(void)
         return NULL;
     }
 
-    GByteArray *request = ns_freenet_diagnostics_request();
+    GByteArray *request = ns_freenet_diagnostics_request(which);
     size_t sent = 0;
     CURLcode rc = curl_ws_send(curl, request->data, request->len, &sent, 0,
                                CURLWS_BINARY);
@@ -299,6 +309,97 @@ ns_freenet_node_diagnostics(void)
         return NULL;
     }
     return reply;
+}
+
+GByteArray *
+ns_freenet_node_diagnostics(void)
+{
+    return ns_freenet_node_query(NS_FREENET_QUERY_CONTRACTS);
+}
+
+static size_t
+ns_freenet_discard(void *data, size_t size, size_t n, void *user)
+{
+    (void)data; (void)user;
+    return size * n;
+}
+
+static void
+ns_freenet_status_probe_gateway(ns_freenet_status *status)
+{
+    g_autofree char *base = ns_freenet_gateway_base(FALSE);
+    if (!base) {
+        status->error = g_strdup("The configured gateway is not a host and port.");
+        return;
+    }
+    g_autofree char *url = g_strconcat(base, "/", NULL);
+
+    CURL *curl = curl_easy_init();
+    if (!curl) return;
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, ns_freenet_discard);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 8L);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
+
+    CURLcode rc = curl_easy_perform(curl);
+    if (rc == CURLE_OK) {
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status->http_status);
+        status->reachable = status->http_status > 0;
+    } else {
+        status->error = g_strdup(curl_easy_strerror(rc));
+    }
+    curl_easy_cleanup(curl);
+}
+
+static void
+ns_freenet_status_read_details(ns_freenet_status *status)
+{
+#ifdef NS_HAVE_FREENET_RS
+    GByteArray *reply = ns_freenet_node_query(NS_FREENET_QUERY_STATUS);
+    if (!reply) return;
+    char *text = ns_freenet_rs_status_text(reply->data, reply->len);
+    g_byte_array_free(reply, TRUE);
+    if (!text) return;
+
+    g_auto(GStrv) lines = g_strsplit(text, "\n", -1);
+    ns_freenet_rs_free_string(text);
+    for (int i = 0; lines[i]; i++) {
+        char *eq = strchr(lines[i], '=');
+        if (!eq) continue;
+        *eq = '\0';
+        const char *key = lines[i], *value = eq + 1;
+        if (g_str_equal(key, "peers"))            status->peers = atoi(value);
+        else if (g_str_equal(key, "connections")) status->connections = atoi(value);
+        else if (g_str_equal(key, "contracts"))   status->contracts = atoi(value);
+        else if (g_str_equal(key, "uptime"))      status->uptime_seconds = g_ascii_strtoll(value, NULL, 10);
+        else if (g_str_equal(key, "gateway"))     status->is_gateway = *value == '1';
+        else if (g_str_equal(key, "peer_id"))     status->peer_id = g_strdup(value);
+    }
+    status->detailed = TRUE;
+#else
+    (void)status;
+#endif
+}
+
+ns_freenet_status *
+ns_freenet_status_query(void)
+{
+    ns_freenet_status *status = g_new0(ns_freenet_status, 1);
+    ns_freenet_status_probe_gateway(status);
+    if (status->reachable)
+        ns_freenet_status_read_details(status);
+    return status;
+}
+
+void
+ns_freenet_status_free(ns_freenet_status *status)
+{
+    if (!status) return;
+    g_free(status->peer_id);
+    g_free(status->error);
+    g_free(status);
 }
 
 char *
