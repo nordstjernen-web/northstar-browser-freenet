@@ -7,7 +7,9 @@
 
 #include <string.h>
 
-#ifndef G_OS_WIN32
+#ifdef G_OS_WIN32
+#include <windows.h>
+#else
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -69,9 +71,28 @@ ns_nodectl_find_node(void)
     return NULL;
 }
 
+/* The browser applies ProcessChildProcessPolicy = NoChildProcessCreation to
+ * itself, so it cannot start anything. Ask the kernel rather than guess. */
+static gboolean
+ns_nodectl_child_processes_blocked(void)
+{
+    typedef BOOL (WINAPI *ns_gmp_fn)(HANDLE, int, PVOID, SIZE_T);
+    HMODULE k = GetModuleHandleW(L"kernel32.dll");
+    if (!k) return FALSE;
+    ns_gmp_fn get = (ns_gmp_fn)(void *)
+        GetProcAddress(k, "GetProcessMitigationPolicy");
+    if (!get) return FALSE;
+
+    DWORD policy = 0;
+    if (!get(GetCurrentProcess(), 13, &policy, sizeof policy))
+        return FALSE;
+    return (policy & 0x1u) != 0;
+}
+
 gboolean
 ns_nodectl_available(void)
 {
+    if (ns_nodectl_child_processes_blocked()) return FALSE;
     g_autofree char *node = ns_nodectl_find_node();
     return node != NULL;
 }
@@ -91,6 +112,15 @@ ns_nodectl_run(const char *verb, char **output)
         return FALSE;
     }
 
+    if (ns_nodectl_child_processes_blocked()) {
+        if (output)
+            *output = g_strdup("Northstar blocks itself from starting any "
+                               "process, so it cannot run the node. Use the "
+                               "node's own service or tray icon, or start it "
+                               "with NS_NO_WIN32_MITIGATIONS set.");
+        return FALSE;
+    }
+
     g_autofree char *node = ns_nodectl_find_node();
     if (!node) {
         if (output)
@@ -104,37 +134,77 @@ ns_nodectl_run(const char *verb, char **output)
         return TRUE;
     }
 
-    char *argv[] = { node, (char *)"service", (char *)verb, NULL };
-    g_autofree char *out = NULL;
-    g_autofree char *err = NULL;
-    int status = 0;
-    GError *error = NULL;
-
-    if (!g_spawn_sync(NULL, argv, NULL,
-                      G_SPAWN_DEFAULT, NULL, NULL,
-                      &out, &err, &status, &error)) {
-        if (output)
-            *output = g_strdup_printf("Could not run %s service %s: %s",
-                                      node, verb,
-                                      error ? error->message : "failed");
-        g_clear_error(&error);
+    /* CreateProcessW rather than g_spawn_sync: GLib routes a Windows spawn
+     * through a gspawn-win64-helper binary, which fails from the packaged
+     * browser. watchdog.c starts its child the same way. */
+    g_autofree wchar_t *app = g_utf8_to_utf16(node, -1, NULL, NULL, NULL);
+    g_autofree char *line = g_strdup_printf("\"%s\" service %s", node, verb);
+    g_autofree wchar_t *cmd = g_utf8_to_utf16(line, -1, NULL, NULL, NULL);
+    if (!app || !cmd) {
+        if (output) *output = g_strdup("Could not build the node command.");
         return FALSE;
     }
 
-    gboolean ok = g_spawn_check_wait_status(status, &error);
-    g_clear_error(&error);
+    SECURITY_ATTRIBUTES sa;
+    memset(&sa, 0, sizeof sa);
+    sa.nLength = sizeof sa;
+    sa.bInheritHandle = TRUE;
+
+    HANDLE read_end = NULL, write_end = NULL;
+    if (!CreatePipe(&read_end, &write_end, &sa, 0)) {
+        if (output) *output = g_strdup("Could not open a pipe to the node.");
+        return FALSE;
+    }
+    SetHandleInformation(read_end, HANDLE_FLAG_INHERIT, 0);
+
+    STARTUPINFOW si;
+    PROCESS_INFORMATION pi;
+    memset(&si, 0, sizeof si);
+    memset(&pi, 0, sizeof pi);
+    si.cb = sizeof si;
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdOutput = write_end;
+    si.hStdError = write_end;
+    si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+
+    BOOL started = CreateProcessW(app, cmd, NULL, NULL, TRUE,
+                                  CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
+    DWORD spawn_error = started ? 0 : GetLastError();
+    CloseHandle(write_end);
+
+    if (!started) {
+        CloseHandle(read_end);
+        g_autofree char *msg = g_win32_error_message((gint)spawn_error);
+        if (output)
+            *output = g_strdup_printf("Could not run %s service %s: %s",
+                                      node, verb, msg ? msg : "failed");
+        return FALSE;
+    }
 
     GString *text = g_string_new(NULL);
-    if (out && *out) g_string_append(text, g_strstrip(out));
-    if (err && *err) {
-        if (text->len) g_string_append_c(text, '\n');
-        g_string_append(text, g_strstrip(err));
+    for (;;) {
+        char buf[1024];
+        DWORD got = 0;
+        if (!ReadFile(read_end, buf, sizeof buf, &got, NULL) || got == 0)
+            break;
+        g_string_append_len(text, buf, (gssize)got);
     }
+    CloseHandle(read_end);
+
+    WaitForSingleObject(pi.hProcess, 20000);
+    DWORD code = 1;
+    GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+
+    g_strstrip(text->str);
+    g_string_set_size(text, strlen(text->str));
     if (!text->len)
-        g_string_append(text, ok ? "done" : "the node reported no output");
+        g_string_append(text, code == 0 ? "done"
+                                        : "the node reported no output");
     if (output) *output = g_string_free(text, FALSE);
     else        g_string_free(text, TRUE);
-    return ok;
+    return code == 0;
 }
 
 #else
