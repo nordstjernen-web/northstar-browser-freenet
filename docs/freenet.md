@@ -453,6 +453,20 @@ When the browser runs without its supervisor — `--no-watchdog`, or any
 headless invocation — there is no channel, the buttons are disabled, and
 the console says why.
 
+**Headless can still run the node, if asked.** `--headless` never
+supervises: a headless render is usually one-shot, and a watchdog that
+restarts it would run the render again. So there is nobody to ask, and
+`--allow-node-control` instead lets that process run the command itself:
+
+```sh
+northstar --headless --allow-node-control --url=about:freenet-control?verb=start
+```
+
+It is off by default and has to be typed, because it is a real trade —
+that process still renders untrusted content, and the flag is what stands
+between a page and a program. Prefer the supervisor whenever there is
+one; this exists for automation, where there is not.
+
 **Windows works the same way, for a different reason.** There is no
 seccomp or Landlock there, but the browser applies
 `ProcessChildProcessPolicy = NoChildProcessCreation` to itself

@@ -519,7 +519,15 @@ main(int argc, char **argv)
         }
     }
 
-    ns_security_win32_mitigations_init(FALSE);
+    /* Without a supervisor there is nothing to ask, so node control needs the
+     * browser to be allowed a child process. Opt in, never by default: this
+     * process still renders untrusted content. */
+    gboolean allow_node_control = FALSE;
+    for (int i = 1; i < argc; i++)
+        if (g_strcmp0(argv[i], "--allow-node-control") == 0)
+            allow_node_control = TRUE;
+
+    ns_security_win32_mitigations_init(allow_node_control);
     ns_add_screenshot_writable_dirs(argc, argv);
 
     if (proc_mode)
@@ -632,6 +640,8 @@ main(int argc, char **argv)
             gint64 n = g_ascii_strtoll(argv[i] + 17, &end, 10);
             if (end != argv[i] + 17 && *end == '\0' && n > 0 && n < 600000)
                 hopts.wpt_timeout_ms = (int)n;
+        } else if (g_strcmp0(argv[i], "--allow-node-control") == 0) {
+            /* consumed above, before the sandbox was raised */
         } else if (g_str_has_prefix(argv[i], "--act=")) {
             hopts.actions = argv[i] + 6;
         } else if (g_str_has_prefix(argv[i], "--eval=")) {
