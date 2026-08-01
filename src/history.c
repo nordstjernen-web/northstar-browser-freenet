@@ -52,7 +52,9 @@ static gboolean
 history_is_recordable(const char *url)
 {
     if (!url || !*url) return FALSE;
-    if (!g_str_has_prefix(url, "http://") && !g_str_has_prefix(url, "https://"))
+    if (!g_str_has_prefix(url, "http://") &&
+        !g_str_has_prefix(url, "https://") &&
+        !g_str_has_prefix(url, "freenet://"))
         return FALSE;
     for (const unsigned char *p = (const unsigned char *)url; *p; p++)
         if (*p < 0x20 || *p == 0x7F) return FALSE;

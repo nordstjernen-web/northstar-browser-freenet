@@ -42,6 +42,16 @@ full AV1 decoder for a format that is rare on the web, so
 `vorbisfile` dev packages add native Ogg Opus/Vorbis decode to the
 in-process mixer. The build works without them.
 
+**Rust (`cargo`), optional, auto-detected.** When present, the Freenet
+client protocol is encoded by
+[freenet-stdlib](https://github.com/freenet/freenet-stdlib) through the
+small wrapper crate in `rust/ns-freenet`; without it the build falls back
+to an in-tree C encoder that produces byte-identical requests but reads
+replies approximately. `-Dfreenet_rust=disabled` forces the fallback,
+`-Dfreenet_rust=enabled` makes a missing toolchain a configure error —
+which is what CI uses, so the Rust path is actually exercised there rather
+than silently skipped. See [freenet.md](freenet.md#the-rust-component).
+
 ## macOS dependencies
 
 With Homebrew:

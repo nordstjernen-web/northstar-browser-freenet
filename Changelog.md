@@ -28,6 +28,11 @@ Significant changes in each release:
   River is sandboxed without network access of its own and proxies its
   WebSocket through the shell that frames it, so every request it made was
   dropped in silence.
+* A Freenet page is recorded in browsing history. Only `http` and `https`
+  addresses were, so a `freenet:` address could be typed, linked and
+  bookmarked but never turned up in `about:history` afterwards -- the one
+  place the scheme was not treated like any other. Back and forward always
+  worked, since session history holds whatever URL it was given.
 * The node's own library encodes the node's protocol. Asking a node which
   contracts it knows means speaking `ClientRequest`/`HostResponse`, which
   have a bincode encoding and no schema -- the `flatbuffers` alternative

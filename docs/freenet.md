@@ -304,6 +304,7 @@ HTTP (`classify_error` in `src/net.c`):
 | `src/js.c` | WebSocket URL mapping, navigation scheme allow-list |
 | `src/gtk/procwindow.c` | Address-bar normalisation, security indicator, session restore |
 | `src/config.c`, `src/config.h` | The `freenet_gateway` setting |
+| `src/history.c` | Recording `freenet:` visits alongside `http`/`https` |
 | `rust/ns-freenet/` | Client-protocol encoding over freenet-stdlib, behind a C ABI |
 | `scripts/build-rust-lib.py` | Drives cargo from meson and places the staticlib |
 
