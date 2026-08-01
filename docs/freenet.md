@@ -9,8 +9,26 @@ and the page it loads gets its own origin rather than borrowing one.
 
 This is [Freenet](https://freenet.org/) — the peer-to-peer application
 platform, formerly developed under the name Locutus. It is not Hyphanet,
-which was the project's name for the older `freenet:USK@…` network and is
-not supported here.
+and the difference matters when reading an address.
+
+### Not Hyphanet
+
+The original Freenet was renamed **Hyphanet** in 2023, freeing the name
+for the project above. They are separate networks with separate software,
+separate addressing and no interoperability. Hyphanet's URIs are a
+different grammar entirely:
+
+    freenet:[KeyType@]RoutingKey,CryptoKey[,extra_meta…][/docname][/metastring]
+
+where `KeyType` is `CHK`, `SSK`, `KSK` or `USK` — its parser
+(`FreenetURI.java` in hyphanet/fred) requires the `@`, rejects an address
+without one, and does not default to any key type. It also accepts the
+scheme spelled `hyphanet:`, `hypha:`, `web+freenet:` and `ext+freenet:`.
+
+Northstar implements the **freenet.org** scheme, where the host is a
+base58 contract key and there is no key type, routing key or crypto key.
+An address containing `@` therefore belongs to Hyphanet and will not
+resolve here.
 
 ## What Freenet is, for the purposes of the browser
 
@@ -270,21 +288,104 @@ HTTP (`classify_error` in `src/net.c`):
   is that a contract cannot have the browser replay a token it was
   issued.
 
-## Verifying it
+## Running a node
 
-Everything above was checked against a real node — the official
-`freenet` v0.2.116 release, joined to the live network — rather than a
-stand-in:
+Northstar needs a node; it does not ship one and does not start one.
+For ordinary use, install Freenet the supported way — the setup at
+[freenet.org](https://freenet.org/) registers a background service with a
+tray icon and keeps itself updated. What follows is the manual route,
+which is what the work in this document was tested against and what you
+want when you need a specific version, no service, or no installer.
+
+### Download and verify
+
+Binaries for each platform are published on the
+[freenet-core releases page](https://github.com/freenet/freenet-core/releases).
+Take the node (`freenet`) and, if you intend to publish, the developer
+tool (`fdev`):
+
+```sh
+V=v0.2.116
+BASE=https://github.com/freenet/freenet-core/releases/download/$V
+
+curl -sLO $BASE/freenet-x86_64-unknown-linux-musl.tar.gz    # or -apple-darwin, -pc-windows-msvc.zip
+curl -sLO $BASE/fdev-x86_64-unknown-linux-musl.tar.gz
+curl -sLO $BASE/SHA256SUMS.txt
+```
+
+**Check the download before running it.** The release carries
+`SHA256SUMS.txt`, and a signature beside it:
+
+```sh
+sha256sum -c SHA256SUMS.txt --ignore-missing
+tar xzf freenet-x86_64-unknown-linux-musl.tar.gz             # unzip on Windows
+./freenet --version
+```
+
+The versions this document was written against:
+
+| Component | Version |
+| --- | --- |
+| `freenet` | 0.2.116 (`1b3bf6cab018`, 2026-07-31) |
+| `fdev` | 0.3.278 |
+
+### Start it
 
 ```sh
 freenet network --ws-api-address 127.0.0.1 --ws-api-port 7509
-fdev website init my-site
+```
+
+`network` is the default mode and joins the public network; `local`
+exists for development and talks to nobody. Binding the API to
+`127.0.0.1` keeps it off the LAN — the node otherwise accepts private-LAN
+addresses too, and anything that reaches that port has your node's full
+client API. `7509` is the default and is what Northstar looks for.
+
+A node that has just started is not yet useful: it has to find peers and
+settle into the ring before it can retrieve anything it does not already
+hold. Give it a few minutes.
+
+### Check it is healthy
+
+The node serves its own dashboard at the gateway root, which is the
+quickest way to see whether it has actually joined:
+
+```sh
+northstar http://127.0.0.1:7509/
+```
+
+Look for a peer count and `Connection Status: Connected`. A healthy node
+on a home connection shows a couple of dozen peers within a few minutes —
+the one used here settled at 29. Zero peers means it has not joined, and
+every address will fail no matter what the browser does.
+
+Then point the browser at a contract:
+
+```sh
+northstar "freenet://<contract-key>/"
+```
+
+### Publishing something to read
+
+```sh
+fdev website init my-site          # generates a signing key, prints the contract key
+mkdir my-site && $EDITOR my-site/index.html
 fdev website publish ./my-site/ --key my-site
 northstar "freenet://<the key it printed>/"
 ```
 
-[`freenet-screenshot.png`](freenet-screenshot.png) is that, unretouched.
-Note that the node serves a contract's own content inside a sandboxed
-frame and returns its shell page for the top-level navigation, so a
-site's markup lives one frame down; the address bar and the frame share
-the same `freenet:` origin.
+`fdev website update ./my-site/ --key my-site` publishes new content under
+the same address. Back up the key file it names — losing it means the
+address can never be updated again.
+
+## Verifying it
+
+Everything above was checked against a real node — the official
+`freenet` v0.2.116 release, joined to the live network with 29 peers —
+rather than a stand-in.
+
+[`freenet-screenshot.png`](freenet-screenshot.png) is a site published
+exactly that way, unretouched. Note that the node serves a contract's own
+content inside a sandboxed frame and returns its shell page for the
+top-level navigation, so a site's markup lives one frame down; the
+address bar and the frame share the same `freenet:` origin.
