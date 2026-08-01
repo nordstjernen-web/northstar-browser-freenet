@@ -750,6 +750,7 @@ ns_engine_load_keyframes(ns_anim *anim, ns_node *doc, const char *base_url,
                          GHashTable *css_cache)
 {
     if (!anim) return;
+    ns_anim_load_from_stylesheet(anim, ns_css_ua_stylesheet());
     GPtrArray *sheets = g_ptr_array_new();
     ns_engine_collect_stylesheets(doc, base_url, sheets, css_cache);
     for (guint i = 0; i < sheets->len; i++) {

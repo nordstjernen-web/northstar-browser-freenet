@@ -31,6 +31,7 @@ static void
 render_feed_animations(const ns_render_ctx *c, GHashTable *styles)
 {
     if (!c->anim) return;
+    ns_anim_load_from_stylesheet(c->anim, ns_css_ua_stylesheet());
     for (guint i = 0; i < c->n_sheets; i++)
         if (c->sheets[i]) ns_anim_load_from_stylesheet(c->anim, c->sheets[i]);
     gint64 now_us = g_get_monotonic_time();

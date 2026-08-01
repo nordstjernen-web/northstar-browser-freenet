@@ -18397,8 +18397,24 @@ static const char *kUa =
     "audio, source, track, param { display: none; }\n"
     "audio[controls] { display: inline-block; }\n"
     "svg { display: inline; }\n"
-    "noframes, frame, frameset, applet, basefont, marquee, "
+    "noframes, frame, frameset, applet, basefont, "
     "noembed, isindex { display: none; }\n"
+    /* <marquee> scrolls by translating itself: the engine animates
+     * transforms, and the element carries no background of its own, so
+     * moving the box reads the same as moving the text inside it. */
+    "marquee { display: block; overflow: hidden; white-space: nowrap;\n"
+    "  animation-name: ns-marquee; animation-duration: 12s;\n"
+    "  animation-timing-function: linear;\n"
+    "  animation-iteration-count: infinite; }\n"
+    "marquee[direction=\"right\"] { animation-name: ns-marquee-right; }\n"
+    "@keyframes ns-marquee {\n"
+    "  from { transform: translateX(100%); }\n"
+    "  to   { transform: translateX(-100%); }\n"
+    "}\n"
+    "@keyframes ns-marquee-right {\n"
+    "  from { transform: translateX(-100%); }\n"
+    "  to   { transform: translateX(100%); }\n"
+    "}\n"
     "listing, xmp, plaintext { display: block; font-family: monospace; "
     "white-space: pre; margin: 0.9em 0; line-height: 1.4; }\n"
     "details, summary { display: block; }\n"
@@ -18419,6 +18435,17 @@ static const char *kUa =
     "[hidden=\"until-found\" i] { content-visibility: hidden; }\n"
     "[popover]:not([data-nd-popover-open]) { display: none; }\n"
     "template { display: none; }\n";
+
+/* The user-agent sheet carries @keyframes of its own — <marquee> scrolls by
+ * one — so the animation system has to be given it alongside author sheets. */
+ns_css_stylesheet *
+ns_css_ua_stylesheet(void)
+{
+    static ns_css_stylesheet *sheet;
+    if (!sheet) sheet = ns_css_stylesheet_parse(kUa, -1);
+    return sheet;
+}
+
 
 static double
 normal_line_height_px(double font_px)
@@ -19376,7 +19403,33 @@ presentational_hints_css(const ns_node *el)
         if (wrap && g_ascii_strcasecmp(wrap, "off") == 0)
             g_string_append(out, "white-space: pre;");
     }
-    (void)is_marq;
+    if (is_marq) {
+        /* scrollamount is pixels per tick, so a larger one is a shorter
+         * crossing; scrolldelay lengthens the tick in milliseconds. */
+        double amount = 6, delay = 85;
+        const char *sa = ns_element_get_attr(el, "scrollamount");
+        const char *sd = ns_element_get_attr(el, "scrolldelay");
+        if (sa && *sa) {
+            double v = g_ascii_strtod(sa, NULL);
+            if (v > 0) amount = v;
+        }
+        if (sd && *sd) {
+            double v = g_ascii_strtod(sd, NULL);
+            if (v > 0) delay = v;
+        }
+        double seconds = (1600.0 / amount) * (delay / 1000.0);
+        if (seconds < 1)   seconds = 1;
+        if (seconds > 600) seconds = 600;
+        g_string_append_printf(out, "animation-duration: %.2fs;", seconds);
+
+        const char *loop = ns_element_get_attr(el, "loop");
+        if (loop && *loop && g_ascii_strtoll(loop, NULL, 10) > 0)
+            g_string_append_printf(out, "animation-iteration-count: %lld;",
+                                   (long long)g_ascii_strtoll(loop, NULL, 10));
+        const char *bg = ns_element_get_attr(el, "bgcolor");
+        if (bg && *bg)
+            g_string_append_printf(out, "background-color: %s;", bg);
+    }
 
     if (out->len == 0) {
         g_string_free(out, TRUE);
@@ -21598,8 +21651,7 @@ ns_css_compute(ns_node *doc,
 
     g_pragma_valid = FALSE;
 
-    static ns_css_stylesheet *cached_ua = NULL;
-    if (!cached_ua) cached_ua = ns_css_stylesheet_parse(kUa, -1);
+    ns_css_stylesheet *cached_ua = ns_css_ua_stylesheet();
 
     gboolean profile = g_getenv("NS_PROFILE") != NULL;
     gint64 t0 = profile ? g_get_monotonic_time() : 0;
