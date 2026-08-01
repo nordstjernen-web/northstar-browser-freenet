@@ -6,7 +6,9 @@
 #include "freenet.h"
 
 #include "config.h"
+#include "ws.h"
 
+#include <curl/curl.h>
 #include <string.h>
 
 #define NS_FREENET_SCHEME_LEN 8
@@ -15,6 +17,12 @@
 
 static const char ns_freenet_base58[] =
     "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+static gboolean
+ns_freenet_is_base58(guint8 c)
+{
+    return c != 0 && strchr(ns_freenet_base58, c) != NULL;
+}
 
 gboolean
 ns_freenet_is_url(const char *url)
@@ -29,7 +37,7 @@ ns_freenet_key_is_valid(const char *key)
     size_t len = strlen(key);
     if (len < 1 || len > 64) return FALSE;
     for (size_t i = 0; i < len; i++)
-        if (!strchr(ns_freenet_base58, key[i]))
+        if (!ns_freenet_is_base58((guint8)key[i]))
             return FALSE;
     return TRUE;
 }
@@ -167,6 +175,89 @@ ns_freenet_to_gateway_ws(const char *url)
     return ns_freenet_map(url, TRUE);
 }
 
+static void
+ns_freenet_put_u32(GByteArray *out, guint32 v)
+{
+    guint8 b[4] = { v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >> 24) & 0xff };
+    g_byte_array_append(out, b, sizeof b);
+}
+
+static GByteArray *
+ns_freenet_diagnostics_request(void)
+{
+    GByteArray *req = g_byte_array_new();
+    const guint8 no = 0;
+    ns_freenet_put_u32(req, 4);
+    ns_freenet_put_u32(req, 2);
+    g_byte_array_append(req, &no, 1);
+    g_byte_array_append(req, &no, 1);
+    const guint8 yes = 1;
+    g_byte_array_append(req, &yes, 1);
+    for (int i = 0; i < 8; i++) g_byte_array_append(req, &no, 1);
+    g_byte_array_append(req, &no, 1);
+    g_byte_array_append(req, &no, 1);
+    g_byte_array_append(req, &no, 1);
+    return req;
+}
+
+GByteArray *
+ns_freenet_node_diagnostics(void)
+{
+    if (!ns_ws_available()) return NULL;
+
+    g_autofree char *base = ns_freenet_gateway_base(TRUE);
+    if (!base) return NULL;
+    g_autofree char *url =
+        g_strconcat(base, "/v1/contract/command?encodingProtocol=native", NULL);
+
+    CURL *curl = curl_easy_init();
+    if (!curl) return NULL;
+
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_CONNECT_ONLY, 2L);
+    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, (long)CURL_HTTP_VERSION_1_1);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
+
+    if (curl_easy_perform(curl) != CURLE_OK) {
+        curl_easy_cleanup(curl);
+        return NULL;
+    }
+
+    GByteArray *request = ns_freenet_diagnostics_request();
+    size_t sent = 0;
+    CURLcode rc = curl_ws_send(curl, request->data, request->len, &sent, 0,
+                               CURLWS_BINARY);
+    g_byte_array_free(request, TRUE);
+    if (rc != CURLE_OK) {
+        curl_easy_cleanup(curl);
+        return NULL;
+    }
+
+    GByteArray *reply = g_byte_array_new();
+    for (int spins = 0; spins < 2000 && reply->len < (1u << 20); spins++) {
+        char buf[8192];
+        size_t got = 0;
+        const struct curl_ws_frame *meta = NULL;
+        rc = curl_ws_recv(curl, buf, sizeof buf, &got, &meta);
+        if (rc == CURLE_AGAIN) {
+            g_usleep(5000);
+            continue;
+        }
+        if (rc != CURLE_OK) break;
+        if (got) g_byte_array_append(reply, (const guint8 *)buf, (guint)got);
+        if (meta && meta->bytesleft == 0 && reply->len) break;
+    }
+
+    curl_easy_cleanup(curl);
+    if (!reply->len) {
+        g_byte_array_free(reply, TRUE);
+        return NULL;
+    }
+    return reply;
+}
+
 char *
 ns_freenet_with_key(const char *url, const char *key)
 {
@@ -188,9 +279,9 @@ ns_freenet_find_key_with_prefix(const guint8 *data, gsize len,
     char *found = NULL;
 
     for (gsize i = 0; i < len; ) {
-        if (!strchr(ns_freenet_base58, data[i])) { i++; continue; }
+        if (!ns_freenet_is_base58(data[i])) { i++; continue; }
         gsize start = i;
-        while (i < len && strchr(ns_freenet_base58, data[i])) i++;
+        while (i < len && ns_freenet_is_base58(data[i])) i++;
         gsize run = i - start;
         if (run < 32 || run > 64) continue;
         if (run < prefix_len) continue;

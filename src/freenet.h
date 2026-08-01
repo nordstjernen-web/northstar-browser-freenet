@@ -29,6 +29,7 @@ char *ns_freenet_localize_origin(const char *target, const char *doc_url);
 char *ns_freenet_with_key(const char *url, const char *key);
 char *ns_freenet_find_key_with_prefix(const guint8 *data, gsize len,
                                       const char *prefix);
+GByteArray *ns_freenet_node_diagnostics(void);
 
 G_END_DECLS
 

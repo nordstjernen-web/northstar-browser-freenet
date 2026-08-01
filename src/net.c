@@ -5399,20 +5399,13 @@ ns_fetch_is_navigation(const char *top_url, GPtrArray *extra_headers)
 static char *
 ns_freenet_expand_prefix(const char *prefix, GCancellable *cancellable)
 {
-    g_autofree char *base = ns_freenet_gateway_base(FALSE);
-    if (!base) return NULL;
-    g_autofree char *home = g_strconcat(base, "/", NULL);
+    (void)cancellable;
+    GByteArray *diagnostics = ns_freenet_node_diagnostics();
+    if (!diagnostics) return NULL;
 
-    ns_response *listing =
-        ns_fetch_sync_hop(home, NULL, "GET", NULL, 0, NULL, NULL,
-                          cancellable, NULL, FALSE, NULL, FALSE, FALSE);
-    if (!listing) return NULL;
-
-    char *full = NULL;
-    if (listing->status == 200 && listing->body && listing->body->len)
-        full = ns_freenet_find_key_with_prefix(listing->body->data,
-                                               listing->body->len, prefix);
-    ns_response_free(listing);
+    char *full = ns_freenet_find_key_with_prefix(diagnostics->data,
+                                                 diagnostics->len, prefix);
+    g_byte_array_free(diagnostics, TRUE);
     return full;
 }
 

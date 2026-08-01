@@ -76,21 +76,43 @@ node demonstrably holds fails exactly the same way.
 Completing the address is therefore the client's job, and Northstar does
 it: before a short address is fetched, the node is asked which contracts
 it knows and the one beginning with the given characters is used
-(`ns_freenet_expand_prefix` in `src/net.c`). The address bar then shows
-the expanded form, so what is bookmarked and shared is the whole key.
+(`ns_freenet_node_diagnostics` in `src/freenet.c`). The address bar then
+shows the expanded form, so what is bookmarked and shared is the whole
+key.
+
+The question goes over the node's **client API**, not its web gateway.
+Northstar opens `ws://<gateway>/v1/contract/command?encodingProtocol=native`
+and sends one request:
+
+    ClientRequest::NodeQueries(NodeQuery::NodeDiagnostics { config })
+
+with every `include_*` flag off and `contract_keys` empty, which means
+"all contracts, nothing else" — the reply is then a few kilobytes rather
+than a full diagnostic dump. The contract ids come back as the keys of
+`NodeDiagnosticsResponse::contract_states`.
+
+Two things about that are worth stating plainly. The endpoint offers a
+`flatbuffers` encoding whose schema would be stable to parse, but that
+schema has no `NodeQueries` member at all, so this query is reachable only
+over `native` — which is bincode: positional, schemaless, and tied to the
+node's struct layout. And rather than decode that layout field by field —
+which would mean encoding `ContractState`'s shape into the browser and
+mis-parsing silently when it changes — the reply is scanned for base58
+runs of contract-key length. That is deliberately loose: it survives
+fields being added upstream, and it cannot mistake a shifted offset for a
+valid key.
 
 Expansion is deliberately conservative. A prefix that matches nothing, or
 that matches more than one contract, is left exactly as it was and the
 error page explains that the address is shortened — guessing between two
-contracts would be worse than not resolving at all.
+contracts would be worse than not resolving at all. If the node is
+unreachable, or the reply is not what is expected, the address is simply
+left short.
 
 A prefix can only be completed against contracts the node has seen; the
 network is content-addressed and cannot be searched by prefix, so an
-address for a contract your node has never encountered stays
-unresolvable until you have its whole key. Note also that this reads the
-node's own front page, which is where those keys are published today
-rather than through a dedicated endpoint; a node that stops listing them
-there would stop expanding, without affecting full addresses.
+address for a contract your node has never encountered stays unresolvable
+until you have its whole key.
 
 Only one place applies a stricter rule: a bare string typed into the
 address bar with no `freenet:` prefix is treated as a contract key only
