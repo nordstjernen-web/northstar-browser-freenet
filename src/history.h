@@ -16,6 +16,7 @@ void   ns_history_shutdown(void);
 void   ns_history_clear(void);
 void   ns_history_record(const char *url, const char *title);
 
+char  *ns_history_title_for_prefix(const char *prefix);
 char  *ns_history_html_page(void);
 
 G_END_DECLS

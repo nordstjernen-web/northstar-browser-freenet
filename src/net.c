@@ -4288,6 +4288,7 @@ static const char k_about_freenet_html[] =
 "ul.keys a{font-family:ui-monospace,\"Cascadia Mono\",Consolas,monospace;"
 "font-size:.85em;text-decoration:none;overflow-wrap:anywhere}\n"
 "ul.keys a:hover{text-decoration:underline}\n"
+"ul.keys a.named{font-family:inherit;font-size:.9em;font-weight:600}\n"
 "@media (prefers-color-scheme: dark){\n"
 "input[type=text]{background:#14161b;border-color:#343841}\n"
 "ul.keys li{border-bottom-color:#262a33}\n"
@@ -4370,8 +4371,10 @@ static const char k_about_freenet_html[] =
 "(c.reachable?'The node reported none yet.':"
 "'Not available while no node is answering.');\n"
 "  keys.forEach(function(k){var li=document.createElement('li');"
-"var a=document.createElement('a');a.href='freenet://'+k+'/';"
-"a.textContent=k;li.appendChild(a);ul.appendChild(li);});\n"
+"var a=document.createElement('a');a.href='freenet://'+k.key+'/';"
+"a.textContent=k.name||k.key;a.title=k.key;"
+"if(k.name)a.className='named';"
+"li.appendChild(a);ul.appendChild(li);});\n"
 "  if(c.job){"
 "if(c.job.running){busy=true;say(c.job.verb+'\\u2026');"
 "if(!polling){polling=true;setTimeout(poll,400);}}"
@@ -4635,8 +4638,14 @@ about_freenet_json(void)
                 if (!ns_freenet_key_is_full(key)) continue;
                 if (previous && g_strcmp0(previous, key) == 0) continue;
                 previous = key;
+                g_autofree char *origin =
+                    g_strconcat("freenet://", key, "/", NULL);
+                g_autofree char *seen = ns_history_title_for_prefix(origin);
+                g_autofree char *name =
+                    about_json_escape(seen ? seen : "");
                 if (known->len > 1) g_string_append_c(known, ',');
-                g_string_append_printf(known, "\"%s\"", key);
+                g_string_append_printf(known, "{\"key\":\"%s\",\"name\":\"%s\"}",
+                                       key, name);
             }
         }
     }

@@ -204,6 +204,36 @@ static const char k_history_style[] =
     "}"
     "</style>";
 
+/* A Freenet contract key says nothing about what it is. The node cannot be
+ * asked cheaply — most contracts are not websites and time out — but a page
+ * that has been visited already left its title here. */
+char *
+ns_history_title_for_prefix(const char *prefix)
+{
+    if (!prefix || !*prefix) return NULL;
+
+    g_mutex_lock(&g_history_mutex);
+    char *title = NULL;
+    sqlite3_stmt *st = NULL;
+    if (g_history_db &&
+        sqlite3_prepare_v2(g_history_db,
+            /* Error pages are titled "… — Northstar" and are the browser
+             * talking about the contract, not the contract naming itself. */
+            "SELECT title FROM visits WHERE url LIKE ?||'%' AND title <> '' "
+            "AND title NOT LIKE '%"  "\xe2\x80\x94" " Northstar' "
+            "ORDER BY last_visit DESC LIMIT 1",
+            -1, &st, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(st, 1, prefix, -1, SQLITE_TRANSIENT);
+        if (sqlite3_step(st) == SQLITE_ROW) {
+            const char *found = (const char *)sqlite3_column_text(st, 0);
+            if (found && *found) title = g_strdup(found);
+        }
+    }
+    if (st) sqlite3_finalize(st);
+    g_mutex_unlock(&g_history_mutex);
+    return title;
+}
+
 char *
 ns_history_html_page(void)
 {
