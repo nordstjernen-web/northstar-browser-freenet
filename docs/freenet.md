@@ -386,6 +386,8 @@ Everything above was checked against a real node — the official
 `freenet` v0.2.116 release, joined to the live network with 29 peers —
 rather than a stand-in.
 
+freenet:EqJ5YpEE/#AcArxczvbu/1/home
+
 [`freenet-screenshot.png`](freenet-screenshot.png) is a site published
 exactly that way, unretouched. Note that the node serves a contract's own
 content inside a sandboxed frame and returns its shell page for the
