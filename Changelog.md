@@ -28,6 +28,25 @@ Significant changes in each release:
   River is sandboxed without network access of its own and proxies its
   WebSocket through the shell that frames it, so every request it made was
   dropped in silence.
+* A shortened Freenet address is named for what it is. Addresses are
+  commonly passed around cut to their first few characters --
+  `freenet:EqJ5YpEE` for
+  `freenet://EqJ5YpEEV3XLqEvKWLQHFhGAac2qXzSUoE6k2zbdnXBr/` -- and these
+  are real addresses, not typos. A node's web gateway resolves whole keys
+  only, though: handed a prefix it decodes and pads it into an unrelated
+  key and reports that as missing, which a prefix of a contract the node
+  demonstrably holds reproduces exactly. The page for one now says the
+  address is shortened and needs completing, and points at the node's
+  dashboard, where the full keys can be read -- rather than blaming the
+  address, or advising a wait that would never end.
+* A WebSocket a contract opens against its own origin reaches the node.
+  Freenet applications derive the address from `location`, as the
+  documentation tells them to, which under this scheme yields
+  `ws://<contract-key>/v1/contract/command` -- a host that resolves
+  nowhere. `ws:` is a special scheme, so the URL parser had also
+  lowercased the key by then, and base58 is case-sensitive. Such a socket
+  is now recognised by its own document's origin, compared without regard
+  to case, and sent to the node.
 * A short Freenet address resolves. Addresses are passed around in
   forms much shorter than a full key -- `freenet:4ksJFjsd`, or the
   12-character prefix of an owner's ed25519 key that `freenet-git` uses --

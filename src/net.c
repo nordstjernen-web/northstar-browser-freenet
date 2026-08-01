@@ -2745,14 +2745,12 @@ classify_error(long status, const char *transport_error, gboolean is_file_url,
 {
     static const ns_error_info FREENET_SHORT_ADDRESS = {
         "🕸",
-        "This address needs its full contract key",
-        "This address needs its full contract key",
-        "A node's web gateway resolves a contract only by its whole key, "
-        "around 43 base58 characters. It does not expand a shorter prefix: "
-        "given one it looks up a different contract entirely, which is why "
-        "this cannot be found however long you wait. Short forms are "
-        "expanded by the application that issued them — ask for the full "
-        "address, or open this one in the app it belongs to."
+        "That address is shortened",
+        "That address is shortened",
+        "Freenet addresses are often passed around shortened to their first "
+        "few characters. This one names a real contract, but a node's web "
+        "gateway resolves whole keys only — it will not expand a prefix — "
+        "so the address has to be completed before it can be opened."
     };
     static const ns_error_info FREENET_NO_NODE = {
         "🕸",
@@ -3101,13 +3099,17 @@ ns_build_error_page(const char *url, long status, const char *transport_error)
         "<ul>");
     if (is_freenet_short) {
         g_string_append(out,
-            "<li>Ask whoever gave you this address for the full contract "
-            "key.</li>"
-            "<li>A full key looks like "
-            "<code>Gi5zrGqRvxce8JBuV11AvD3WK3hwCahd2Z7ktBaBLVpC</code> — "
-            "around 43 base58 characters.</li>"
-            "<li>If the short form came from an application, that "
-            "application is what knows how to expand it.</li>");
+            "<li>Ask whoever gave you this address for the whole key — it "
+            "is the same address written out, around 43 base58 "
+            "characters, beginning with what you already have.</li>"
+            "<li>Your node's dashboard lists the full keys of contracts it "
+            "knows about; the one you want starts with these "
+            "characters.</li>"
+            "<li>Open the dashboard at <code>");
+        char *esc_gateway = ns_html_escape_text(ns_freenet_gateway());
+        g_string_append(out, esc_gateway);
+        g_free(esc_gateway);
+        g_string_append(out, "</code>.</li>");
     } else if (is_freenet_url) {
         char *esc_gateway = ns_html_escape_text(ns_freenet_gateway());
         g_string_append(out,

@@ -40,14 +40,25 @@ which is what `fdev` prints when a site is published.
 
 ### Short addresses
 
-A full key is around 43 base58 characters, but addresses are handed
-around in shorter forms too — `freenet:4ksJFjsd`, or the 12-character
-prefix of an owner's ed25519 key that `freenet-git` uses. **The browser
-does not judge how long a key should be.** Anything base58 up to 64
-characters is a syntactically valid host, and resolving it is the node's
-job: it expands what it is given and answers, so an address that does not
-exist comes back as the node's own "not found" rather than as a parse
-error from Northstar.
+A full key is around 43 base58 characters, but addresses are commonly
+passed around shortened to their first few — `freenet:EqJ5YpEE` for
+`freenet://EqJ5YpEEV3XLqEvKWLQHFhGAac2qXzSUoE6k2zbdnXBr/`. These are
+genuine addresses, not typos.
+
+**The browser does not judge how long a key should be**: anything base58
+up to 64 characters is a syntactically valid host and is carried to the
+node. But a node's web gateway resolves *whole* keys only. Given a
+prefix it does not search for the contract that starts with it — it
+decodes and pads what it was handed, arriving at an unrelated key, and
+answers "not found". This is verifiable: the prefix of a contract the
+node demonstrably holds fails exactly the same way.
+
+So a shortened address cannot be opened until it is completed, and
+Northstar says so specifically rather than reporting a generic failure.
+Expanding a prefix would mean asking the node which contracts it knows,
+which is a client-API operation over the WebSocket rather than anything
+the HTTP gateway exposes; the node's own dashboard is where those full
+keys can be read today.
 
 Only one place applies a stricter rule: a bare string typed into the
 address bar with no `freenet:` prefix is treated as a contract key only
