@@ -5,6 +5,8 @@ is typed into the address bar, linked to from a page, bookmarked, kept in
 history and restored with a session the same way an `https:` address is,
 and the page it loads gets its own origin rather than borrowing one.
 
+See: https://github.com/freenet/freenet-core/
+
     freenet://3ZZ98ojKWUJsixNyJsgRwkBZhLxN4CV2Z5AT8dVWJh48/
 
 This is [Freenet](https://freenet.org/) — the peer-to-peer application
