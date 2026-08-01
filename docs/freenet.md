@@ -91,16 +91,13 @@ with every `include_*` flag off and `contract_keys` empty, which means
 than a full diagnostic dump. The contract ids come back as the keys of
 `NodeDiagnosticsResponse::contract_states`.
 
-Two things about that are worth stating plainly. The endpoint offers a
-`flatbuffers` encoding whose schema would be stable to parse, but that
-schema has no `NodeQueries` member at all, so this query is reachable only
-over `native` — which is bincode: positional, schemaless, and tied to the
-node's struct layout. And rather than decode that layout field by field —
-which would mean encoding `ContractState`'s shape into the browser and
-mis-parsing silently when it changes — the reply is scanned for base58
-runs of contract-key length. That is deliberately loose: it survives
-fields being added upstream, and it cannot mistake a shifted offset for a
-valid key.
+The endpoint also offers a `flatbuffers` encoding, whose schema would be
+pleasant to parse, but that schema has no `NodeQueries` member at all —
+so this query exists only over `native`, which is bincode: positional,
+schemaless, and pinned to the node's struct layout.
+
+Rather than hand-roll that layout, the encoding is done by **the node's
+own library**. See [the Rust component](#the-rust-component).
 
 Expansion is deliberately conservative. A prefix that matches nothing, or
 that matches more than one contract, is left exactly as it was and the
@@ -154,6 +151,44 @@ new WebSocket('/v1/contract/command')
 resolves to `ws://127.0.0.1:7509/v1/contract/command`, so an application
 built with `freenet-stdlib` that derives its WebSocket URL from
 `location` connects without modification.
+
+## The Rust component
+
+`ClientRequest` and `HostResponse` are Rust types with a bincode encoding
+and no schema. Reproducing that by hand in C means copying a struct layout
+into the browser and mis-reading it silently the day a field moves
+upstream. So the browser doesn't: it links
+[freenet-stdlib](https://github.com/freenet/freenet-stdlib) — the same
+library the node and its applications use — and lets it do the encoding.
+
+`rust/ns-freenet` is a small crate around it, built as a `staticlib` with
+a four-function C ABI:
+
+| Function | Does |
+| --- | --- |
+| `ns_freenet_rs_contract_query` | encode the `NodeDiagnostics` request |
+| `ns_freenet_rs_contract_ids` | decode a reply to its contract ids |
+| `ns_freenet_rs_free` / `_free_string` | hand memory back |
+
+The split is deliberate: **Rust owns the wire format, C owns the
+transport.** The WebSocket is libcurl's, already linked and already used
+for `WebSocket` in pages, so freenet-stdlib is taken with
+`default-features = false` — its `net` feature would drag in tokio and
+tokio-tungstenite to duplicate a transport we have.
+
+It is optional. `-Dfreenet_rust=disabled`, or simply not having cargo,
+falls back to an in-tree C encoder that builds the same request and finds
+contract ids by scanning the reply for base58 runs of key length. That
+fallback is looser but survives layout changes, so the two together
+degrade sensibly: precise when the library is present, approximate when it
+is not, and never wrong in a way that resolves an address to the wrong
+contract. The two encoders were checked against each other and produce
+identical bytes.
+
+```sh
+meson setup builddir                      # uses cargo when present
+meson setup builddir -Dfreenet_rust=disabled   # C fallback only
+```
 
 ## How a fetch is served
 
@@ -288,6 +323,8 @@ HTTP (`classify_error` in `src/net.c`):
 | `src/js.c` | WebSocket URL mapping, navigation scheme allow-list |
 | `src/gtk/procwindow.c` | Address-bar normalisation, security indicator, session restore |
 | `src/config.c`, `src/config.h` | The `freenet_gateway` setting |
+| `rust/ns-freenet/` | Client-protocol encoding over freenet-stdlib, behind a C ABI |
+| `scripts/build-rust-lib.py` | Drives cargo from meson and places the staticlib |
 
 ## Limits
 

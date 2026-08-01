@@ -1,0 +1,21 @@
+[package]
+name = "ns-freenet"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "ns_freenet_rs"
+crate-type = ["staticlib"]
+
+# The client API types and their bincode encoding only. `net` is deliberately
+# not enabled: it would pull tokio and tokio-tungstenite, and the transport is
+# libcurl's, already linked.
+[dependencies]
+freenet-stdlib = { version = "0.8", default-features = false }
+bincode = "1"
+
+[profile.release]
+opt-level = "s"
+panic = "abort"
+strip = true

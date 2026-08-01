@@ -35,6 +35,33 @@ wpt_hook_h = custom_target(
             'ns_wpt_hook_src'],
 )
 
+cargo_prog = find_program('cargo', required: get_option('freenet_rust'))
+have_freenet_rust = false
+freenet_rust_lib = []
+freenet_rust_link_args = []
+
+if cargo_prog.found()
+  freenet_rust_lib = custom_target(
+    'ns-freenet-rs',
+    output: 'libns_freenet_rs.a',
+    input: files('../rust/ns-freenet/src/lib.rs', '../rust/ns-freenet/Cargo.toml'),
+    command: [
+      python, files('../scripts/build-rust-lib.py'), cargo_prog,
+      meson.project_source_root() / 'rust' / 'ns-freenet' / 'Cargo.toml',
+      meson.project_build_root() / 'rust-target',
+      '@OUTPUT@',
+    ],
+    build_by_default: true,
+  )
+  have_freenet_rust = true
+  if host_machine.system() == 'windows'
+    freenet_rust_link_args = ['-lntdll', '-luserenv', '-lws2_32', '-ldbghelp']
+  endif
+  message('Freenet client protocol: freenet-stdlib (Rust)')
+else
+  message('Freenet client protocol: in-tree C encoder (cargo not found)')
+endif
+
 northstar_engine_sources = files(
   'anim.c',
   'bytecode_cache.c',

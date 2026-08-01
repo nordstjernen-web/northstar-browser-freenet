@@ -175,6 +175,13 @@ ns_freenet_to_gateway_ws(const char *url)
     return ns_freenet_map(url, TRUE);
 }
 
+#ifdef NS_HAVE_FREENET_RS
+guint8 *ns_freenet_rs_contract_query(gsize *len);
+char   *ns_freenet_rs_contract_ids(const guint8 *data, gsize len);
+void    ns_freenet_rs_free(guint8 *ptr, gsize len);
+void    ns_freenet_rs_free_string(char *ptr);
+#endif
+
 static void
 ns_freenet_put_u32(GByteArray *out, guint32 v)
 {
@@ -185,6 +192,16 @@ ns_freenet_put_u32(GByteArray *out, guint32 v)
 static GByteArray *
 ns_freenet_diagnostics_request(void)
 {
+#ifdef NS_HAVE_FREENET_RS
+    gsize encoded_len = 0;
+    guint8 *encoded = ns_freenet_rs_contract_query(&encoded_len);
+    if (encoded) {
+        GByteArray *from_stdlib = g_byte_array_new();
+        g_byte_array_append(from_stdlib, encoded, (guint)encoded_len);
+        ns_freenet_rs_free(encoded, encoded_len);
+        return from_stdlib;
+    }
+#endif
     GByteArray *req = g_byte_array_new();
     const guint8 no = 0;
     ns_freenet_put_u32(req, 4);
@@ -269,11 +286,37 @@ ns_freenet_with_key(const char *url, const char *key)
     return out;
 }
 
+static char *
+ns_freenet_match_prefix(const char *const *ids, const char *prefix)
+{
+    size_t prefix_len = strlen(prefix);
+    char *found = NULL;
+    for (int i = 0; ids[i]; i++) {
+        if (strncmp(ids[i], prefix, prefix_len) != 0) continue;
+        if (!ns_freenet_key_is_full(ids[i])) continue;
+        if (found && strcmp(found, ids[i]) != 0) {
+            g_free(found);
+            return NULL;
+        }
+        if (!found) found = g_strdup(ids[i]);
+    }
+    return found;
+}
+
 char *
 ns_freenet_find_key_with_prefix(const guint8 *data, gsize len,
                                 const char *prefix)
 {
     if (!data || !len || !prefix || !*prefix) return NULL;
+
+#ifdef NS_HAVE_FREENET_RS
+    char *decoded = ns_freenet_rs_contract_ids(data, len);
+    if (decoded) {
+        g_auto(GStrv) ids = g_strsplit(decoded, "\n", -1);
+        ns_freenet_rs_free_string(decoded);
+        return ns_freenet_match_prefix((const char *const *)ids, prefix);
+    }
+#endif
 
     size_t prefix_len = strlen(prefix);
     char *found = NULL;

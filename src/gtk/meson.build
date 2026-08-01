@@ -32,13 +32,16 @@ executable(
     northstar_gtk_sources + northstar_audio_sources +
     northstar_gtk_platform_sources +
     northstar_icon_resources +
-    northstar_win_resources + [polyfills_h, wpt_hook_h],
+    northstar_win_resources + [polyfills_h, wpt_hook_h] +
+    freenet_rust_lib,
   dependencies: northstar_gtk_deps + northstar_audio_deps,
   link_with: northstar_audio_libs,
-  c_args: ['-DNS_HAVE_GTK=1'],
+  c_args: ['-DNS_HAVE_GTK=1'] +
+    (have_freenet_rust ? ['-DNS_HAVE_FREENET_RS=1'] : []),
   include_directories: include_directories('..', '.'),
   pie: host_machine.system() != 'windows',
   win_subsystem: northstar_win_subsystem,
-  link_args: northstar_exe_link_args + northstar_gtk_platform_link_args,
+  link_args: northstar_exe_link_args + northstar_gtk_platform_link_args +
+    freenet_rust_link_args,
   install: true,
 )

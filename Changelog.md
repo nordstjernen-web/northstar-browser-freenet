@@ -28,6 +28,20 @@ Significant changes in each release:
   River is sandboxed without network access of its own and proxies its
   WebSocket through the shell that frames it, so every request it made was
   dropped in silence.
+* The node's own library encodes the node's protocol. Asking a node which
+  contracts it knows means speaking `ClientRequest`/`HostResponse`, which
+  have a bincode encoding and no schema -- the `flatbuffers` alternative
+  the endpoint offers has no member for the query at all. Reproducing a
+  schemaless Rust struct layout in C is a decoder that mis-reads in
+  silence the day a field moves, so the browser now links
+  freenet-stdlib itself, through a small `staticlib` crate
+  (`rust/ns-freenet`) with a four-function C ABI: Rust owns the wire
+  format, libcurl keeps the transport, and the library is taken without
+  its `net` feature so it does not bring tokio along to duplicate a
+  WebSocket the browser already has. It is optional --
+  `-Dfreenet_rust=disabled`, or no cargo, falls back to the in-tree C
+  encoder, which builds a byte-identical request and finds contract ids by
+  scanning rather than decoding.
 * A shortened Freenet address opens. Addresses are commonly passed
   around cut to their first few characters -- `freenet:EqJ5YpEE` for
   `freenet://EqJ5YpEEV3XLqEvKWLQHFhGAac2qXzSUoE6k2zbdnXBr/` -- and these
