@@ -6,6 +6,7 @@
 
 use std::os::raw::c_char;
 
+use freenet_stdlib::client_api::ClientError;
 use freenet_stdlib::client_api::{
     ClientRequest, HostResponse, NodeDiagnosticsConfig, NodeDiagnosticsResponse, NodeQuery,
     QueryResponse,
@@ -92,8 +93,20 @@ fn decode_diagnostics(data: *const u8, len: usize) -> Option<NodeDiagnosticsResp
         return None;
     }
     let bytes = unsafe { std::slice::from_raw_parts(data, len) };
-    match bincode::deserialize::<HostResponse>(bytes) {
-        Ok(HostResponse::QueryResponse(QueryResponse::NodeDiagnostics(d))) => Some(d),
+
+    // The node answers with the client API's HostResult, which is a
+    // Result<HostResponse, ClientError> — the bare HostResponse is one
+    // discriminant short and will not deserialize.
+    let response = match bincode::deserialize::<Result<HostResponse, ClientError>>(bytes) {
+        Ok(Ok(r)) => r,
+        Ok(Err(_)) => return None,
+        Err(_) => match bincode::deserialize::<HostResponse>(bytes) {
+            Ok(r) => r,
+            Err(_) => return None,
+        },
+    };
+    match response {
+        HostResponse::QueryResponse(QueryResponse::NodeDiagnostics(d)) => Some(d),
         _ => None,
     }
 }

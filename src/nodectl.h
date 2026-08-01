@@ -14,6 +14,7 @@ G_BEGIN_DECLS
 
 int      ns_nodectl_supervisor_open(void);
 void     ns_nodectl_supervisor_listen(void);
+void     ns_nodectl_supervisor_stop_node(void);
 void     ns_nodectl_supervisor_close(void);
 
 gboolean ns_nodectl_verb_is_known(const char *verb);

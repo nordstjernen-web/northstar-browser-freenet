@@ -589,6 +589,8 @@ ns_watchdog_run_supervisor(const char *self_exe, int argc, char **argv)
         g_spawn_close_pid(wd.pid);
     }
     g_main_loop_unref(wd.loop);
+    if (wd.node_control_fd >= 0)
+        ns_nodectl_supervisor_stop_node();
     ns_nodectl_supervisor_close();
     g_unlink(wd.session_path);
     g_strfreev(wd.child_argv);

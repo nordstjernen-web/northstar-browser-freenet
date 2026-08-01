@@ -180,6 +180,17 @@ ns_nodectl_supervisor_listen(void)
     g_sup_thread = (HANDLE)t;
 }
 
+/* The node is a daemon this browser asked for; leaving it running after the
+ * window closes would leave a network service behind the user did not choose
+ * to keep. Only the supervisor can do this, and only it knows the browser has
+ * gone. */
+void
+ns_nodectl_supervisor_stop_node(void)
+{
+    gboolean ok = FALSE;
+    g_free(ns_nodectl_run_node_command("stop", &ok));
+}
+
 void
 ns_nodectl_supervisor_close(void)
 {
@@ -631,6 +642,17 @@ ns_nodectl_supervisor_listen(void)
     g_supervisor_buf = g_string_new(NULL);
     g_unix_fd_add(g_supervisor_fd, G_IO_IN | G_IO_ERR,
                   ns_nodectl_supervisor_readable, NULL);
+}
+
+/* The node is a daemon this browser asked for; leaving it running after the
+ * window closes would leave a network service behind the user did not choose
+ * to keep. Only the supervisor can do this, and only it knows the browser has
+ * gone. */
+void
+ns_nodectl_supervisor_stop_node(void)
+{
+    gboolean ok = FALSE;
+    g_free(ns_nodectl_run_node_command("stop", &ok));
 }
 
 void

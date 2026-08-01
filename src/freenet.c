@@ -288,19 +288,25 @@ ns_freenet_node_query(ns_freenet_query which)
         return NULL;
     }
 
+    /* A reply larger than the read buffer arrives in several pieces, and a
+     * piece can report no bytes left in its own frame while the message goes
+     * on. Read until the socket has been idle for a moment, so a long answer
+     * is not truncated into something that will not decode. */
     GByteArray *reply = g_byte_array_new();
+    int idle = 0;
     for (int spins = 0; spins < 2000 && reply->len < (1u << 20); spins++) {
         char buf[8192];
         size_t got = 0;
         const struct curl_ws_frame *meta = NULL;
         rc = curl_ws_recv(curl, buf, sizeof buf, &got, &meta);
         if (rc == CURLE_AGAIN) {
+            if (reply->len && ++idle > 40) break;
             g_usleep(5000);
             continue;
         }
         if (rc != CURLE_OK) break;
+        idle = 0;
         if (got) g_byte_array_append(reply, (const guint8 *)buf, (guint)got);
-        if (meta && meta->bytesleft == 0 && reply->len) break;
     }
 
     curl_easy_cleanup(curl);
