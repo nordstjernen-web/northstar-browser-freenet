@@ -51,6 +51,19 @@ jobs:
             echo "PKG_CONFIG_PATH=$(brew --prefix curl)/lib/pkgconfig:$(brew --prefix openssl@3)/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
           } >> "$GITHUB_ENV"
 
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore cargo cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-macos-${{ hashFiles('rust/ns-freenet/Cargo.lock') }}
+          restore-keys: |
+            cargo-macos-
+
       - name: Restore ccache
         uses: actions/cache@v6
         with:
@@ -78,7 +91,7 @@ jobs:
         run: |
           set -o pipefail
           export CC="ccache clang"
-          meson setup builddir 2>&1 | tee build.log
+          meson setup builddir -Dfreenet_rust=enabled 2>&1 | tee build.log
           meson compile -C builddir 2>&1 | tee -a build.log
 
       - name: Publish build log on failure

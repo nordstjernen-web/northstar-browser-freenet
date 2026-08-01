@@ -51,6 +51,22 @@ jobs:
             libuchardet-dev libpsl-dev libsqlite3-dev \
             libavif-dev libsdl2-dev libseccomp-dev libenchant-2-dev ca-certificates
 
+      # Builds the freenet-stdlib wrapper (rust/ns-freenet). Without cargo the
+      # build silently takes the in-tree C fallback, so the Rust path would
+      # never be exercised here.
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore cargo cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-linux-${{ hashFiles('rust/ns-freenet/Cargo.lock') }}
+          restore-keys: |
+            cargo-linux-
+
       - name: Restore ccache
         uses: actions/cache@v6
         with:
@@ -83,7 +99,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          meson setup builddir --werror
+          meson setup builddir --werror -Dfreenet_rust=enabled
           meson compile -C builddir 2>&1 | tee build.log
 
       - name: ccache stats

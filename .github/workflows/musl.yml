@@ -34,7 +34,8 @@ jobs:
             build-base clang ccache pkgconf meson ninja git cmake python3 \
             gtk4.0-dev curl-dev openssl-dev uchardet-dev libpsl-dev             harfbuzz-dev fribidi-dev cairo-dev fontconfig-dev freetype-dev \
             sqlite-dev libavif-dev sdl2-dev libseccomp-dev \
-            fontconfig font-dejavu ca-certificates file
+            fontconfig font-dejavu ca-certificates file \
+            rust cargo
 
       - uses: actions/checkout@v7
 
@@ -54,7 +55,7 @@ jobs:
       - name: Build (musl libc, no LTO)
         run: |
           export CC="ccache clang"
-          meson setup builddir -Db_lto=false
+          meson setup builddir -Db_lto=false -Dfreenet_rust=enabled
           meson compile -C builddir
           file builddir/src/gtk/northstar
 
