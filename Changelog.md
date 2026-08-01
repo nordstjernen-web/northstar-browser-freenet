@@ -4,6 +4,50 @@ Significant changes in each release:
 
 1.0.7:
 ======
+* A frame sees its own parent as the source of a message the parent sent
+  it. `event.source` carried the parent's raw global object instead, so
+  the identity check every postMessage bridge opens with --
+  `if (event.source !== window.parent) return` -- discarded the message.
+  The substitution that resolves the parent to the frame's view of it ran
+  only for a frame that had already been given an outward window, which
+  is never true on a first load. A Freenet node hands a framed contract a
+  WebSocket shim that opens with exactly that check, so nothing the shell
+  answered ever reached the application; the same first line appears in
+  every framed messaging library. Setting `document.title` on a document
+  with no `<title>` had the mirror-image bug: the element was created but
+  appended behind the tag index, so the getter kept answering "".
+* A path that belongs to the Freenet node reaches the node, whichever API
+  version names it. `/v1/` and `/v2/` are the same surface and a contract
+  may link to either, but only `v1` was recognised, so a `v2` gateway
+  path inside a contract was read as a file within that contract. The
+  shell page the node returns for every contract also subscribes to
+  `/permission/events` and polls `/permission/pending` -- that is how the
+  node asks the user to approve a delegate's request -- and those were
+  being sent into the contract's own path space, where nothing answers.
+* Asking the node which contracts it knows is a Freenet question, and is
+  now asked only by a Freenet document. Any page that opened a WebSocket
+  to a host of key-ish length triggered it, putting a blocking round-trip
+  to the gateway -- five seconds to connect, ten more to read -- in front
+  of an ordinary socket. The answer it caches is reachable from worker
+  threads and now takes a lock.
+* The page for an unreachable node says how to get one. A new install has
+  no node, and that is the whole of what stands between it and Freenet,
+  so the page carries the command that installs one as a supervised
+  service, the command that starts one already installed, and a link to
+  the dashboard the node serves. A node that is not supervised stops
+  updating itself and eventually stops working, which is why the service
+  is the supported shape. The page for a contract that could not be
+  retrieved says the other thing worth knowing instead: check the node
+  has found peers, because one that has just started has none. A
+  shortened address is completed by asking the node over a WebSocket, and
+  a libcurl built without that protocol -- Ubuntu's, among others --
+  cannot; that now says so rather than failing silently.
+* A node gateway URL pasted into the address bar resolves to the address
+  it names. `fdev` prints a published site as
+  `http://127.0.0.1:7509/v1/contract/web/<key>/` and the manual asks
+  authors to write their internal links the same way, so the URL people
+  copy is a gateway URL; it loaded as plain HTTP on the gateway's shared
+  origin instead of giving the contract its own.
 * Freenet's River runs. The chat app is a Dioxus/Rust WebAssembly build
   served as a shell page that wraps the real app in a sandboxed iframe,
   and four separate engine gaps each stopped it before anything rendered.
