@@ -168,6 +168,26 @@ ns_freenet_to_gateway_ws(const char *url)
 }
 
 char *
+ns_freenet_node_error(long status, const guint8 *body, gsize len)
+{
+    if (status < 400 || !body || !len) return NULL;
+
+    gsize scan = len < 512 ? len : 512;
+    for (gsize i = 0; i < scan; i++)
+        if (body[i] == '<')
+            return NULL;
+
+    gsize keep = len < 400 ? len : 400;
+    char *text = g_strndup((const char *)body, keep);
+    g_strstrip(text);
+    if (!*text || !g_utf8_validate(text, -1, NULL)) {
+        g_free(text);
+        return NULL;
+    }
+    return text;
+}
+
+char *
 ns_freenet_localize_csp(const char *csp, const char *url)
 {
     if (!csp || !*csp) return NULL;

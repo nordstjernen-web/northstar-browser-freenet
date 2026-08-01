@@ -2758,12 +2758,22 @@ classify_error(long status, const char *transport_error, gboolean is_file_url,
         "prefix of one, written in base58 — the characters 0, O, I and l "
         "are not part of that alphabet."
     };
+    static const ns_error_info FREENET_SEARCHING = {
+        "🕸",
+        "Still searching Freenet",
+        "Still searching Freenet",
+        "Your node is running but has not yet found a peer holding this "
+        "contract, and the lookup ran out of time. A node that has just "
+        "started can take several minutes to settle into the network."
+    };
     static const ns_error_info FREENET_MISSING = {
         "🕸",
         "Contract not found on Freenet",
         "Contract not found on Freenet",
         "Your node is running but could not retrieve this contract. It may "
-        "not exist, or no peer holding it has been reached yet."
+        "not exist, or no peer holding it has been reached yet — a node "
+        "that has just started often needs a few minutes before it can "
+        "find one."
     };
     static const ns_error_info NO_NETWORK = {
         "📡",
@@ -2903,7 +2913,12 @@ classify_error(long status, const char *transport_error, gboolean is_file_url,
         if (transport_error &&
             g_strstr_len(transport_error, -1, "contract address"))
             return &FREENET_BAD_ADDRESS;
-        if (status == 404 || status == 410) return &FREENET_MISSING;
+        if (status == 404 || status == 410 || status >= 500)
+            return &FREENET_MISSING;
+        if (transport_error &&
+            (g_strstr_len(transport_error, -1, "imed out") ||
+             g_strstr_len(transport_error, -1, "Timeout")))
+            return &FREENET_SEARCHING;
         if (status <= 0) return &FREENET_NO_NODE;
     }
 
@@ -5494,6 +5509,22 @@ ns_fetch_sync(const char *url, const char *top_url, const char *method,
         if (csp) {
             g_free(resp->csp_header);
             resp->csp_header = csp;
+        }
+        char *node_error = ns_freenet_node_error(resp->status,
+                                                 resp->body ? resp->body->data : NULL,
+                                                 resp->body ? resp->body->len : 0);
+        if (node_error) {
+            char *html = ns_build_error_page(resp->final_url, resp->status,
+                                             node_error);
+            if (html) {
+                g_byte_array_set_size(resp->body, 0);
+                g_byte_array_append(resp->body, (const guint8 *)html,
+                                    (guint)strlen(html));
+                g_free(resp->content_type);
+                resp->content_type = g_strdup("text/html; charset=utf-8");
+                g_free(html);
+            }
+            g_free(node_error);
         }
     }
     g_free(cur_url);

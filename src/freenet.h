@@ -24,6 +24,7 @@ char *ns_freenet_to_gateway(const char *url);
 char *ns_freenet_to_gateway_ws(const char *url);
 char *ns_freenet_from_gateway(const char *url);
 char *ns_freenet_localize_csp(const char *csp, const char *url);
+char *ns_freenet_node_error(long status, const guint8 *body, gsize len);
 
 G_END_DECLS
 
