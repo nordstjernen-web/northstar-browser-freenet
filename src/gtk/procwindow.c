@@ -122,6 +122,9 @@ typedef struct {
     GtkWidget      *task_mgr_win;
     GtkWidget      *downloads_win;
     GtkWidget      *downloads_list;
+    GtkWidget      *freenet_button;
+    guint           freenet_timer;
+    gboolean        freenet_polling;
 } ProcWindow;
 
 static const char *
@@ -142,6 +145,8 @@ procwindow_free(gpointer data)
         g_source_remove(pw->session_timer);
     if (pw->status_timer)
         g_source_remove(pw->status_timer);
+    if (pw->freenet_timer)
+        g_source_remove(pw->freenet_timer);
     GtkSettings *settings = gtk_settings_get_default();
     for (int i = 0; settings && i < 2; i++)
         if (pw->theme_watch[i])
@@ -210,7 +215,11 @@ install_status_css(void)
         "}"
         ".ns-toolbar entry { padding-top: 2px; padding-bottom: 2px; }"
         ".ns-address image.left { margin-right: 4px; }"
-        ".ns-zoom { font-size: smaller; padding: 0 6px; min-width: 0; }");
+        ".ns-zoom { font-size: smaller; padding: 0 6px; min-width: 0; }"
+        ".ns-freenet { font-size: smaller; padding: 0 6px; min-width: 0; }"
+        ".ns-freenet.up      { color: #1a8a4a; }"
+        ".ns-freenet.warn    { color: #d38b12; }"
+        ".ns-freenet.down    { color: alpha(currentColor, 0.45); }");
     gtk_style_context_add_provider_for_display(
         display, GTK_STYLE_PROVIDER(p),
         GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
@@ -290,6 +299,80 @@ normalize_url(const char *input)
     char *out = g_strconcat("https://", trimmed, NULL);
     g_free(trimmed);
     return out;
+}
+
+#define NS_FREENET_POLL_SECS 20
+
+static void
+freenet_indicator_apply(ProcWindow *pw, ns_freenet_status *status)
+{
+    if (!pw->freenet_button) return;
+
+    const char *state = "down";
+    g_autofree char *tip = NULL;
+    if (!status->reachable) {
+        tip = g_strconcat(ns_i18n("No Freenet node is answering at "),
+                          ns_freenet_gateway(), NULL);
+    } else if (status->detailed && status->peers == 0) {
+        state = "warn";
+        tip = g_strdup(ns_i18n("The Freenet node is running but has found no "
+                               "peers yet"));
+    } else if (status->detailed) {
+        state = "up";
+        tip = g_strdup_printf("%s %d",
+                              ns_i18n("Freenet node — connected peers:"),
+                              status->peers);
+    } else {
+        state = "up";
+        tip = g_strdup(ns_i18n("The Freenet node is running"));
+    }
+
+    gtk_widget_remove_css_class(pw->freenet_button, "up");
+    gtk_widget_remove_css_class(pw->freenet_button, "warn");
+    gtk_widget_remove_css_class(pw->freenet_button, "down");
+    gtk_widget_add_css_class(pw->freenet_button, state);
+
+    g_autofree char *label = status->detailed && status->reachable
+        ? g_strdup_printf("\xe2\x97\x8f %d", status->peers)
+        : g_strdup("\xe2\x97\x8f");
+    gtk_button_set_label(GTK_BUTTON(pw->freenet_button), label);
+    gtk_widget_set_tooltip_text(pw->freenet_button, tip);
+    set_accessible_label(pw->freenet_button, tip);
+}
+
+static void
+freenet_poll_thread(GTask *task, gpointer source, gpointer data,
+                    GCancellable *cancellable)
+{
+    (void)source; (void)data; (void)cancellable;
+    g_task_return_pointer(task, ns_freenet_status_query(),
+                          (GDestroyNotify)ns_freenet_status_free);
+}
+
+static void
+freenet_poll_done(GObject *source, GAsyncResult *result, gpointer user_data)
+{
+    (void)source;
+    ProcWindow *pw = user_data;
+    ns_freenet_status *status = g_task_propagate_pointer(G_TASK(result), NULL);
+    pw->freenet_polling = FALSE;
+    if (status) {
+        freenet_indicator_apply(pw, status);
+        ns_freenet_status_free(status);
+    }
+}
+
+static gboolean
+freenet_poll(gpointer user_data)
+{
+    ProcWindow *pw = user_data;
+    if (!pw->freenet_polling) {
+        pw->freenet_polling = TRUE;
+        GTask *task = g_task_new(pw->window, NULL, freenet_poll_done, pw);
+        g_task_run_in_thread(task, freenet_poll_thread);
+        g_object_unref(task);
+    }
+    return G_SOURCE_CONTINUE;
 }
 
 static void
@@ -1091,7 +1174,10 @@ static void act_save_image(GSimpleAction *action, GVariant *parameter,
                            gpointer user_data);
 static void act_fullscreen(GSimpleAction *action, GVariant *parameter,
                            gpointer user_data);
+static void act_freenet(GSimpleAction *action, GVariant *parameter,
+                        gpointer user_data);
 static void on_bookmarks_clicked(GtkButton *button, gpointer user_data);
+static void on_freenet_clicked(GtkButton *button, gpointer user_data);
 
 typedef struct {
     ProcWindow *pw;
@@ -1565,6 +1651,7 @@ install_shortcuts(ProcWindow *pw)
                    (const char *[]){ "F11", NULL });
     install_action(pw, "settings", G_CALLBACK(act_settings),
                    (const char *[]){ "<Ctrl>comma", NULL });
+    install_action(pw, "freenet", G_CALLBACK(act_freenet), NULL);
     install_action(pw, "quit", G_CALLBACK(act_quit),
                    (const char *[]){ "<Ctrl>q", NULL });
 }
@@ -1690,6 +1777,16 @@ proc_window_new(GtkApplication *app, const char *home_url,
                                           ns_i18n("Bookmarks"),
                                           G_CALLBACK(on_bookmarks_clicked), pw);
 
+    pw->freenet_button = gtk_button_new_with_label("\xe2\x97\x8f");
+    gtk_button_set_has_frame(GTK_BUTTON(pw->freenet_button), FALSE);
+    gtk_widget_add_css_class(pw->freenet_button, "ns-freenet");
+    gtk_widget_add_css_class(pw->freenet_button, "down");
+    gtk_widget_set_tooltip_text(pw->freenet_button,
+                                ns_i18n("Freenet node"));
+    set_accessible_label(pw->freenet_button, ns_i18n("Freenet node"));
+    g_signal_connect(pw->freenet_button, "clicked",
+                     G_CALLBACK(on_freenet_clicked), pw);
+
     GMenu *appmenu = g_menu_new();
     GMenu *sec_window = g_menu_new();
     menu_append_accel(sec_window, ns_i18n("New Window"), "win.new-window",
@@ -1720,6 +1817,8 @@ proc_window_new(GtkApplication *app, const char *home_url,
     menu_append_accel(sec_tools, ns_i18n("JavaScript Console"), "win.console",
                       "<Ctrl><Shift>j");
     menu_append_accel(sec_tools, ns_i18n("Task Manager"), "win.task-manager",
+                      NULL);
+    menu_append_accel(sec_tools, ns_i18n("Freenet Node Console"), "win.freenet",
                       NULL);
     menu_append_accel(sec_tools, ns_i18n("Settings"), "win.settings", NULL);
     g_menu_append_section(appmenu, NULL, G_MENU_MODEL(sec_tools));
@@ -1757,6 +1856,7 @@ proc_window_new(GtkApplication *app, const char *home_url,
     gtk_box_append(GTK_BOX(toolbar), pw->address);
     gtk_box_append(GTK_BOX(toolbar), pw->zoom_button);
     gtk_box_append(GTK_BOX(toolbar), go);
+    gtk_box_append(GTK_BOX(toolbar), pw->freenet_button);
     gtk_box_append(GTK_BOX(toolbar), pw->bookmarks_button);
     gtk_box_append(GTK_BOX(toolbar), menu_button);
     gtk_box_append(GTK_BOX(toolbar), logo_button);
@@ -1795,6 +1895,10 @@ proc_window_new(GtkApplication *app, const char *home_url,
             G_CALLBACK(on_theme_changed), pw);
     }
 
+    pw->freenet_timer = g_timeout_add_seconds(NS_FREENET_POLL_SECS,
+                                              freenet_poll, pw);
+    freenet_poll(pw);
+
     return pw;
 }
 
@@ -1816,6 +1920,21 @@ act_settings(GSimpleAction *action, GVariant *parameter, gpointer user_data)
     NsProcView *v = current_view(pw);
     if (v)
         ns_proc_view_load(v, "about:settings");
+}
+
+static void
+act_freenet(GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+    (void)action; (void)parameter;
+    ProcWindow *pw = user_data;
+    proc_window_load(pw, "about:freenet");
+}
+
+static void
+on_freenet_clicked(GtkButton *button, gpointer user_data)
+{
+    (void)button;
+    proc_window_load(user_data, "about:freenet");
 }
 
 static void

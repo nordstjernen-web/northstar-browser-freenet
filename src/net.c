@@ -13,6 +13,7 @@
 #include "freenet.h"
 #include "html.h"
 #include "image.h"
+#include "nodectl.h"
 #include "security.h"
 #include "ws.h"
 #include "about_logo_gif.h"
@@ -3123,6 +3124,9 @@ ns_build_error_page(const char *url, long status, const char *transport_error)
         char *esc_gateway = ns_html_escape_text(ns_freenet_gateway());
         if (info == &FREENET_NO_NODE) {
             g_string_append(out,
+                "<li>Open the <a href=\"about:freenet\">Freenet node "
+                "console</a>, which reports what the node is doing and can "
+                "start it.</li>"
                 "<li>Install a node, once, and it registers itself as a "
                 "background service that starts with the machine and keeps "
                 "itself up to date:<br>"
@@ -4235,6 +4239,125 @@ static const char k_about_northstar_template[] =
     "</p>"
     "</main></body></html>";
 
+static const char k_about_freenet_html[] =
+"<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\n"
+"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
+"<meta name=\"color-scheme\" content=\"light dark\">\n"
+"<title>Freenet node</title>\n"
+"<style>\n"
+"html,body{margin:0;background:#f4f6f9;color:#16202e;font-family:system-ui,"
+"-apple-system,\"Segoe UI\",Helvetica,Arial,sans-serif;min-height:100%}\n"
+".bar{display:flex;align-items:center;gap:12px;padding:11px 18px;"
+"background:#1b2a4a;color:#fff;position:sticky;top:0;z-index:5}\n"
+".brand{font-weight:700;font-size:1.12em}\n"
+"main{max-width:680px;margin:0 auto;padding:18px}\n"
+".card{background:#fff;border-radius:12px;padding:18px 20px;margin:0 0 14px;"
+"box-shadow:0 1px 3px rgba(20,30,50,.08)}\n"
+"h2{font-size:1.1em;margin:.1em 0 .7em}\n"
+".state{display:flex;align-items:center;gap:10px;font-size:1.15em;"
+"font-weight:600;margin:0 0 10px}\n"
+".dot{width:12px;height:12px;border-radius:50%;background:#8a93a3;"
+"flex:0 0 auto}\n"
+".dot.up{background:#1a8a4a}.dot.down{background:#c8412f}"
+".dot.warn{background:#d38b12}\n"
+"dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:0;"
+"font-size:.92em}\n"
+"dt{color:#5b6470;font-weight:600}dd{margin:0}\n"
+"button{font:inherit;border:0;border-radius:8px;padding:9px 18px;cursor:pointer;"
+"background:#2d6cf6;color:#fff;font-weight:600}\n"
+"button.ghost{background:#e7ebf2;color:#16202e}\n"
+"button[disabled]{opacity:.5;cursor:default}\n"
+"button:hover:not([disabled]){filter:brightness(1.05)}\n"
+".row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}\n"
+"pre{background:#0f1420;color:#d9e0ee;border-radius:8px;padding:12px 14px;"
+"font-size:.85em;overflow:auto;max-height:16em;white-space:pre-wrap;"
+"margin:12px 0 0}\n"
+"p.note{color:#8a93a3;font-size:.85em;margin:10px 0 0}\n"
+"a{color:#2d6cf6}\n"
+"@media (prefers-color-scheme: dark){\n"
+"html,body{background:#16181d;color:#e6e8ec}\n"
+".bar{background:#10131a}\n"
+".card{background:#1d2027;box-shadow:0 1px 3px rgba(0,0,0,.4)}\n"
+"dt{color:#9aa3b2}\n"
+"button.ghost{background:#2a2e36;color:#e6e8ec}\n"
+"p.note{color:#79818f}\n"
+"}\n"
+"</style></head><body>\n"
+"<header class=\"bar\"><div class=\"brand\">\xf0\x9f\x95\xb8 Freenet node</div></header>\n"
+"<main>\n"
+"<section class=\"card\">\n"
+"<div class=\"state\"><span id=\"dot\" class=\"dot\"></span>"
+"<span id=\"state\">Checking\xe2\x80\xa6</span></div>\n"
+"<dl>\n"
+"<dt>Gateway</dt><dd id=\"gateway\">\xe2\x80\x94</dd>\n"
+"<dt>Peers</dt><dd id=\"peers\">\xe2\x80\x94</dd>\n"
+"<dt>Contracts</dt><dd id=\"contracts\">\xe2\x80\x94</dd>\n"
+"<dt>Uptime</dt><dd id=\"uptime\">\xe2\x80\x94</dd>\n"
+"<dt>Peer id</dt><dd id=\"peerid\">\xe2\x80\x94</dd>\n"
+"</dl>\n"
+"<div class=\"row\"><button id=\"refresh\" class=\"ghost\">Refresh</button>"
+"<a id=\"dash\" href=\"#\">Node dashboard</a>"
+"<a href=\"about:settings\">Settings</a></div>\n"
+"</section>\n"
+"<section class=\"card\"><h2>Control</h2>\n"
+"<div class=\"row\"><button id=\"start\">Start node</button>"
+"<button id=\"stop\" class=\"ghost\">Stop node</button>"
+"<button id=\"restart\" class=\"ghost\">Restart node</button>"
+"<button id=\"status\" class=\"ghost\">Service status</button></div>\n"
+"<p class=\"note\" id=\"controlnote\"></p>\n"
+"<pre id=\"log\">Ready.</pre>\n"
+"</section>\n"
+"</main>\n"
+"<script>\n"
+"function $(id){return document.getElementById(id);}\n"
+"function dur(s){if(!s)return '\\u2014';var d=Math.floor(s/86400),"
+"h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);"
+"if(d)return d+'d '+h+'h';if(h)return h+'h '+m+'m';return m+'m';}\n"
+"function say(t){var l=$('log');l.textContent=t;}\n"
+"function add(t){var l=$('log');l.textContent=(l.textContent+'\\n'+t).trim();"
+"l.scrollTop=l.scrollHeight;}\n"
+"var busy=false;\n"
+"function setBusy(b){busy=b;['start','stop','restart','status'].forEach("
+"function(id){$(id).disabled=b||!$(id).dataset.enabled;});}\n"
+"function render(c){\n"
+"  $('gateway').textContent=c.gateway;\n"
+"  $('dash').href=c.dashboard;$('dash').textContent=c.dashboard;\n"
+"  var dot=$('dot');dot.className='dot';\n"
+"  if(!c.reachable){dot.classList.add('down');"
+"$('state').textContent='No node is answering';}\n"
+"  else if(c.detailed&&c.peers===0){dot.classList.add('warn');"
+"$('state').textContent='Running, but it has not found peers yet';}\n"
+"  else{dot.classList.add('up');$('state').textContent=c.detailed?"
+"'Running and connected':'Running';}\n"
+"  $('peers').textContent=c.detailed?(c.peers+' connected'):"
+"(c.reachable?'unavailable in this build':'\\u2014');\n"
+"  $('contracts').textContent=c.detailed?c.contracts:'\\u2014';\n"
+"  $('uptime').textContent=c.detailed?dur(c.uptime):'\\u2014';\n"
+"  $('peerid').textContent=c.peer_id||'\\u2014';\n"
+"  ['start','stop','restart','status'].forEach(function(id){"
+"$(id).dataset.enabled=c.control?'1':'';});\n"
+"  setBusy(busy);\n"
+"  $('controlnote').textContent=c.control?"
+"'Northstar asks its supervisor process to run the node\\u2019s own "
+"service commands.':c.control_reason;\n"
+"  if(c.error) add(c.error);\n"
+"}\n"
+"function load(){return fetch('about:freenet-data').then(function(r){"
+"return r.json();}).then(render).catch(function(e){say('' + e);});}\n"
+"function control(verb){if(busy)return;setBusy(true);"
+"say(verb + '\\u2026');"
+"fetch('about:freenet-control',{method:'POST',headers:{'Content-Type':"
+"'application/x-www-form-urlencoded'},body:'verb='+verb})"
+".then(function(r){return r.json();}).then(function(j){"
+"say(j.output||(j.ok?'done':'failed'));setBusy(false);"
+"return load();}).catch(function(e){say('' + e);setBusy(false);});}\n"
+"$('refresh').addEventListener('click',load);\n"
+"['start','stop','restart','status'].forEach(function(id){"
+"$(id).addEventListener('click',function(){control(id);});});\n"
+"load();setInterval(load,10000);\n"
+"</script>\n"
+"</body></html>\n";
+
 static const char k_about_settings_html[] =
 "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\n"
 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
@@ -4435,6 +4558,56 @@ about_settings_json(void)
     return json;
 }
 
+static char *
+about_freenet_json(void)
+{
+    ns_freenet_status *status = ns_freenet_status_query();
+    g_autofree char *gateway = about_json_escape(ns_freenet_gateway());
+    g_autofree char *base = ns_freenet_gateway_base(FALSE);
+    g_autofree char *dashboard =
+        about_json_escape(base ? base : "http://" NS_FREENET_DEFAULT_GATEWAY);
+    g_autofree char *peer_id =
+        about_json_escape(status->peer_id ? status->peer_id : "");
+    g_autofree char *error =
+        about_json_escape(status->error ? status->error : "");
+
+    char *reason = NULL;
+    gboolean control = ns_nodectl_run("ping", &reason);
+    g_autofree char *reason_json = about_json_escape(reason ? reason : "");
+    g_free(reason);
+
+    char *json = g_strdup_printf(
+        "{\"gateway\":\"%s\",\"dashboard\":\"%s/\",\"reachable\":%s,"
+        "\"http_status\":%ld,\"detailed\":%s,\"peers\":%d,\"connections\":%d,"
+        "\"contracts\":%d,\"uptime\":%" G_GINT64_FORMAT ",\"is_gateway\":%s,"
+        "\"peer_id\":\"%s\",\"error\":\"%s\",\"control\":%s,"
+        "\"control_reason\":\"%s\",\"websocket\":%s}",
+        gateway, dashboard, status->reachable ? "true" : "false",
+        status->http_status, status->detailed ? "true" : "false",
+        status->peers, status->connections, status->contracts,
+        status->uptime_seconds, status->is_gateway ? "true" : "false",
+        peer_id, error, control ? "true" : "false",
+        reason_json, ns_ws_available() ? "true" : "false");
+    ns_freenet_status_free(status);
+    return json;
+}
+
+static char *
+about_freenet_control(const char *form)
+{
+    GHashTable *q = form && *form
+        ? g_uri_parse_params(form, -1, "&", G_URI_PARAMS_WWW_FORM, NULL)
+        : NULL;
+    const char *verb = q ? g_hash_table_lookup(q, "verb") : NULL;
+    char *output = NULL;
+    gboolean ok = ns_nodectl_run(verb ? verb : "", &output);
+    if (q) g_hash_table_unref(q);
+    g_autofree char *escaped = about_json_escape(output ? output : "");
+    g_free(output);
+    return g_strdup_printf("{\"ok\":%s,\"output\":\"%s\"}",
+                           ok ? "true" : "false", escaped);
+}
+
 static void
 about_settings_save(const char *form)
 {
@@ -4512,7 +4685,8 @@ synthesize_about_response(const char *url, const char *top_url,
     if (!g_str_has_prefix(url, "about:")) return FALSE;
     const char *what = url + strlen("about:");
     if ((g_str_equal(what, "history") ||
-         g_str_has_prefix(what, "settings")) &&
+         g_str_has_prefix(what, "settings") ||
+         g_str_has_prefix(what, "freenet")) &&
         !about_request_from_chrome(top_url)) {
         resp->status = 403;
         resp->final_url = g_strdup(url);
@@ -4633,6 +4807,15 @@ synthesize_about_response(const char *url, const char *top_url,
     } else if (g_str_has_prefix(what, "settings-clear")) {
         about_settings_clear();
         about_emit_json(resp, g_strdup("{\"ok\":true}"));
+    } else if (g_str_equal(what, "freenet")) {
+        g_byte_array_append(resp->body, (const guint8 *)k_about_freenet_html,
+                            (guint)strlen(k_about_freenet_html));
+    } else if (g_str_has_prefix(what, "freenet-data")) {
+        about_emit_json(resp, about_freenet_json());
+    } else if (g_str_has_prefix(what, "freenet-control")) {
+        char *form = about_request_form(url, method, req_body, req_body_len);
+        about_emit_json(resp, about_freenet_control(form));
+        g_free(form);
     } else {
         const char *body = "<!doctype html><title>Northstar</title>";
         g_byte_array_append(resp->body, (const guint8 *)body, (guint)strlen(body));
