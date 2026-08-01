@@ -19938,12 +19938,14 @@ ns_window_websocket_ctor(JSContext *ctx, JSValueConst this_val,
     JS_FreeCString(ctx, url_raw);
     g_free(resolved);
 
-    g_autofree char *csp_target = ns_freenet_is_url(target)
-        ? g_strdup(target) : NULL;
-    if (csp_target) {
-        char *remapped = ns_freenet_to_gateway_ws(target);
+    g_autofree char *csp_target = NULL;
+    {
+        char *remapped = ns_freenet_is_url(target)
+            ? ns_freenet_to_gateway_ws(target)
+            : ns_freenet_localize_origin(target,
+                                         js ? js->current_url : NULL);
         if (remapped) {
-            g_free(target);
+            csp_target = target;
             target = remapped;
         }
     }
@@ -20219,12 +20221,14 @@ ns_window_eventsource_ctor(JSContext *ctx, JSValueConst this_val,
     JS_FreeCString(ctx, url_raw);
     g_free(resolved);
 
-    g_autofree char *csp_target = ns_freenet_is_url(target)
-        ? g_strdup(target) : NULL;
-    if (csp_target) {
-        char *remapped = ns_freenet_to_gateway(target);
+    g_autofree char *csp_target = NULL;
+    {
+        char *remapped = ns_freenet_is_url(target)
+            ? ns_freenet_to_gateway(target)
+            : ns_freenet_localize_origin(target,
+                                         js ? js->current_url : NULL);
         if (remapped) {
-            g_free(target);
+            csp_target = target;
             target = remapped;
         }
     }

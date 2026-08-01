@@ -168,6 +168,44 @@ ns_freenet_to_gateway_ws(const char *url)
 }
 
 char *
+ns_freenet_localize_origin(const char *target, const char *doc_url)
+{
+    if (!target) return NULL;
+
+    static const struct { const char *scheme; gboolean websocket; } schemes[] = {
+        { "ws://", TRUE }, { "wss://", TRUE },
+        { "http://", FALSE }, { "https://", FALSE },
+    };
+    const char *authority = NULL;
+    gboolean websocket = FALSE;
+    for (gsize i = 0; i < G_N_ELEMENTS(schemes); i++) {
+        size_t n = strlen(schemes[i].scheme);
+        if (g_ascii_strncasecmp(target, schemes[i].scheme, n) == 0) {
+            authority = target + n;
+            websocket = schemes[i].websocket;
+            break;
+        }
+    }
+    if (!authority) return NULL;
+
+    size_t host_len = strcspn(authority, ":/?#");
+    g_autofree char *host = g_strndup(authority, host_len);
+
+    g_autofree char *key = ns_freenet_key_of(doc_url);
+    if (!key || g_ascii_strcasecmp(host, key) != 0)
+        return NULL;
+
+    const char *rest = authority + host_len;
+    rest += strcspn(rest, "/?#");
+    while (*rest == '/') rest++;
+
+    char *base = ns_freenet_gateway_base(websocket);
+    char *out = base ? g_strconcat(base, "/", rest, NULL) : NULL;
+    g_free(base);
+    return out;
+}
+
+char *
 ns_freenet_node_error(long status, const guint8 *body, gsize len)
 {
     if (status < 400 || !body || !len) return NULL;
