@@ -263,6 +263,11 @@ normalize_url(const char *input)
         g_free(trimmed);
         return canonical;
     }
+    char *from_gateway = ns_freenet_from_gateway(trimmed);
+    if (from_gateway) {
+        g_free(trimmed);
+        return from_gateway;
+    }
     if (g_str_has_prefix(trimmed, "about:") ||
         g_str_has_prefix(trimmed, "file:") ||
         g_str_has_prefix(trimmed, "data:") || strstr(trimmed, "://"))

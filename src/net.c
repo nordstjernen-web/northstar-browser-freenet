@@ -14,6 +14,7 @@
 #include "html.h"
 #include "image.h"
 #include "security.h"
+#include "ws.h"
 #include "about_logo_gif.h"
 #include "about_splash_gif.h"
 
@@ -2739,6 +2740,14 @@ typedef struct ns_error_info {
     const char *summary;
 } ns_error_info;
 
+static const ns_error_info FREENET_NO_NODE = {
+    "🕸",
+    "No Freenet node is running",
+    "No Freenet node is running",
+    "Northstar reaches Freenet through a node on this machine, and "
+    "nothing answered at the configured gateway address."
+};
+
 static const ns_error_info *
 classify_error(long status, const char *transport_error, gboolean is_file_url,
                gboolean is_freenet_url, gboolean is_freenet_short)
@@ -2751,13 +2760,6 @@ classify_error(long status, const char *transport_error, gboolean is_file_url,
         "few characters. This one names a real contract, but a node's web "
         "gateway resolves whole keys only — it will not expand a prefix — "
         "so the address has to be completed before it can be opened."
-    };
-    static const ns_error_info FREENET_NO_NODE = {
-        "🕸",
-        "No Freenet node is running",
-        "No Freenet node is running",
-        "Northstar reaches Freenet through a node on this machine, and "
-        "nothing answered at the configured gateway address."
     };
     static const ns_error_info FREENET_BAD_ADDRESS = {
         "📝",
@@ -3105,26 +3107,60 @@ ns_build_error_page(const char *url, long status, const char *transport_error)
             "<li>Your node's dashboard lists the full keys of contracts it "
             "knows about; the one you want starts with these "
             "characters.</li>"
-            "<li>Open the dashboard at <code>");
-        char *esc_gateway = ns_html_escape_text(ns_freenet_gateway());
-        g_string_append(out, esc_gateway);
-        g_free(esc_gateway);
-        g_string_append(out, "</code>.</li>");
+            "<li>Open the dashboard at ");
+        g_autofree char *dashboard = ns_freenet_gateway_base(FALSE);
+        char *esc_dashboard =
+            ns_html_escape_text(dashboard ? dashboard : ns_freenet_gateway());
+        g_string_append_printf(out, "<a href=\"%s/\"><code>%s</code></a>.</li>",
+                               esc_dashboard, esc_dashboard);
+        g_free(esc_dashboard);
+        if (!ns_ws_available())
+            g_string_append(out,
+                "<li>This build cannot complete the address for you: it asks "
+                "the node over a WebSocket, and the libcurl it is linked "
+                "against was built without the WebSocket protocol.</li>");
     } else if (is_freenet_url) {
         char *esc_gateway = ns_html_escape_text(ns_freenet_gateway());
-        g_string_append(out,
-            "<li>Start a Freenet node on this machine and leave it "
-            "running — see <a href=\"https://freenet.org/\">freenet.org</a>"
-            ".</li>"
-            "<li>Northstar is looking for the node's local gateway at ");
-        g_string_append(out, esc_gateway);
-        g_string_append(out,
-            "; set <code>freenet_gateway</code> in northstar.conf, or the "
-            "<code>NS_FREENET_GATEWAY</code> environment variable, if your "
-            "node listens elsewhere.</li>"
-            "<li>Freenet resolves contracts by searching the network, so a "
-            "freshly started node may need a moment before a reload "
-            "succeeds.</li>");
+        if (info == &FREENET_NO_NODE) {
+            g_string_append(out,
+                "<li>Install a node, once, and it registers itself as a "
+                "background service that starts with the machine and keeps "
+                "itself up to date:<br>"
+                "<code>curl -fsSL https://freenet.org/install.sh | sh</code>"
+                "</li>"
+                "<li>If one is already installed, start it: "
+                "<code>freenet service start</code> — or "
+                "<code>sudo freenet service start --system</code> when it was "
+                "installed system-wide.</li>"
+                "<li>A node listens on <code>127.0.0.1:7509</code> by default "
+                "and serves its own dashboard there. Northstar is looking for "
+                "it at <code>");
+            g_string_append(out, esc_gateway);
+            g_string_append(out,
+                "</code>; set <code>freenet_gateway</code> in northstar.conf, "
+                "the <code>NS_FREENET_GATEWAY</code> environment variable, or "
+                "the field in <a href=\"about:settings\">settings</a> if your "
+                "node listens elsewhere.</li>");
+        } else {
+            g_autofree char *dashboard = ns_freenet_gateway_base(FALSE);
+            char *esc_dashboard =
+                ns_html_escape_text(dashboard ? dashboard : ns_freenet_gateway());
+            g_string_append_printf(out,
+                "<li>Open your node's dashboard at "
+                "<a href=\"%s/\"><code>%s</code></a>", esc_dashboard,
+                esc_dashboard);
+            g_free(esc_dashboard);
+            g_string_append(out,
+                " and check that it has found peers. A node that has "
+                "just started needs a few minutes to settle into the network, "
+                "and one with no peers cannot retrieve anything.</li>"
+                "<li>Freenet resolves a contract by searching the network, so "
+                "a reload a moment later often succeeds where the first "
+                "attempt did not.</li>"
+                "<li>Confirm the key is the whole address — around 43 base58 "
+                "characters — and that it was copied without a missing "
+                "character.</li>");
+        }
         g_free(esc_gateway);
     } else if (is_file_url) {
         g_string_append(out,
