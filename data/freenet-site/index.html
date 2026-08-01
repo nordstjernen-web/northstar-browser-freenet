@@ -1,114 +1,148 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Northstar on Freenet</title>
+<title>~ Northstar's Freenet Homepage ~</title>
 <style>
-  :root { color-scheme: light; }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
+  /* The node frames a site in its shell page, and a framed document's body
+     background does not reach the canvas, so the starfield goes on a wrapper
+     that is unambiguously painted. */
+  html, body { margin: 0; padding: 0; background: #000000; }
+  .page {
     min-height: 100vh;
-    font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
-    color: #16202e;
-    background: #f6f8fb;
-    line-height: 1.55;
-  }
-  header {
-    background: #070d3a;
-    color: #fff;
-    padding: 34px 24px 30px;
+    background-color: #000000;
+    /* a starfield, drawn here rather than fetched: a contract is a sealed
+       archive, and 1997 would have used a tiled .gif from the same server */
+    background-image:
+      radial-gradient(1px 1px at 20px 30px, #fff, transparent),
+      radial-gradient(1px 1px at 90px 70px, #ccf, transparent),
+      radial-gradient(1px 1px at 150px 20px, #fff, transparent),
+      radial-gradient(2px 2px at 60px 120px, #ffd, transparent),
+      radial-gradient(1px 1px at 190px 110px, #fff, transparent);
+    background-size: 220px 160px;
+    color: #ffff00;
+    font-family: "Comic Sans MS", "Segoe UI", cursive, sans-serif;
     text-align: center;
+    padding: 14px 8px 30px;
   }
-  .star { font-size: 30px; line-height: 1; }
-  header h1 { margin: 10px 0 6px; font-size: 27px; letter-spacing: -.01em; }
-  header p { margin: 0; color: #9fb2d8; font-size: 15px; }
-  main { max-width: 760px; margin: 0 auto; padding: 26px 22px 40px; }
-  section {
-    background: #fff;
-    border-radius: 12px;
-    padding: 18px 22px;
-    margin: 0 0 16px;
-    box-shadow: 0 1px 3px rgba(20,30,50,.08);
+  h1 {
+    color: #00ff00;
+    font-size: 34px;
+    margin: 8px 0 2px;
+    text-shadow: 2px 2px 0 #ff00ff, 4px 4px 0 #000;
   }
-  h2 { color: #003366; font-size: 17px; margin: 0 0 10px; }
-  p { margin: 0 0 10px; }
-  p:last-child { margin-bottom: 0; }
-  dl { display: grid; grid-template-columns: auto 1fr; gap: 7px 16px; margin: 0; }
-  dt { color: #5b6470; font-weight: 600; }
-  dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-       font-size: .88em; overflow-wrap: anywhere; }
-  ul { margin: 8px 0 0; padding-left: 20px; }
-  li { margin: 4px 0; }
-  a { color: #003366; }
-  code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-         background: #eef1f6; border-radius: 5px; padding: 1px 5px; font-size: .9em; }
-  footer { text-align: center; color: #6b7686; font-size: 13px; padding: 0 22px 30px; }
-  @media (prefers-color-scheme: dark) {
-    body { background: #14171d; color: #e6e8ec; }
-    section { background: #1d2027; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
-    h2 { color: #7fa8dd; }
-    dt { color: #9aa3b2; }
-    a { color: #7fa8dd; }
-    code { background: #262a33; }
-    footer { color: #79818f; }
+  h2 {
+    color: #00ffff;
+    font-size: 19px;
+    margin: 0 0 6px;
+    text-decoration: underline;
   }
+  marquee { color: #ff66ff; font-weight: bold; font-size: 17px; }
+  .rule {
+    height: 6px; margin: 14px auto; max-width: 660px;
+    background: linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);
+  }
+  table.box {
+    margin: 0 auto 14px; border-collapse: collapse; max-width: 660px;
+    background: #0a0a1a; border: 4px ridge #c0c0c0;
+  }
+  table.box td { padding: 12px 16px; color: #ffffff; text-align: left;
+                 font-size: 14px; line-height: 1.5; }
+  .label { color: #00ff00; font-weight: bold; white-space: nowrap;
+           vertical-align: top; }
+  .val { font-family: "Courier New", monospace; color: #ffff66;
+         word-break: break-all; }
+  a { color: #66ccff; }
+  a:visited { color: #ff99ff; }
+  .counter {
+    display: inline-block; background: #000; color: #00ff00;
+    font-family: "Courier New", monospace; font-size: 21px;
+    letter-spacing: 4px; padding: 4px 10px; border: 3px inset #808080;
+  }
+  .construction {
+    background: repeating-linear-gradient(45deg,#ffcc00 0 14px,#000 14px 28px);
+    color: #000; font-weight: bold; padding: 5px 0; max-width: 660px;
+    margin: 0 auto 14px; border: 2px solid #000;
+  }
+  .construction span { background: #ffcc00; padding: 3px 10px; }
+  ul.links { list-style: none; padding: 0; margin: 6px 0 0; }
+  ul.links li { margin: 5px 0; font-size: 15px; }
+  .small { color: #aab; font-size: 12px; }
+  .ring { max-width: 660px; margin: 0 auto; color: #fff; font-size: 13px; }
+  blink { animation: b 1s steps(2) infinite; }
+  @keyframes b { 50% { opacity: 0; } }
 </style>
 </head>
 <body>
+<div class="page">
 
-<header>
-  <div class="star">✦</div>
-  <h1>Northstar on Freenet</h1>
-  <p>This page is not on the web. Your node fetched it from the network.</p>
-</header>
+<marquee scrollamount="4">*** WELCOME TO NORTHSTAR ON FREENET *** no servers were harmed in the making of this page *** you are surfing the deep web, 1997 style ***</marquee>
 
-<main>
-  <section>
-    <h2>Where you are</h2>
-    <dl>
-      <dt>Address</dt>   <dd id="href">—</dd>
-      <dt>Origin</dt>    <dd id="origin">—</dd>
-      <dt>Contract</dt>  <dd id="key">—</dd>
-    </dl>
-    <p style="margin-top:12px">Read by this page's own JavaScript. The contract
-      key is the origin's host, which is what keeps one contract from reading
-      another's storage.</p>
-  </section>
+<h1>Northstar on Freenet</h1>
+<p><b>This page is NOT on the web!!</b><br>
+<span class="small">Your Freenet node fetched it from the network.</span></p>
 
-  <section>
-    <h2>Getting around</h2>
-    <ul>
-      <li>Type a <code>freenet:</code> address, or paste a whole contract key,
-        into the address bar.</li>
-      <li>A shortened address such as <code>freenet:EqJ5YpEE</code> is completed
-        against the contracts your node knows.</li>
-      <li><a href="about:freenet">The node console</a> shows whether your node is
-        connected, what it holds, and can start or stop it.</li>
-      <li><a href="about:settings">Settings</a> holds the gateway address, if
-        your node does not listen on the usual port.</li>
-    </ul>
-  </section>
+<div class="construction"><span>&#9888; THIS SITE IS UNDER CONSTRUCTION &#9888;</span></div>
 
-  <section>
-    <h2>About</h2>
-    <p>Northstar is a web browser written from scratch in C, with no upstream
-      browser engine. It speaks <code>freenet:</code> as a first-class URL
-      scheme rather than as a bookmark to a local port, so every contract gets
-      its own origin.</p>
-    <p>It is the GPL edition of the
-      <a href="https://nordstjernen.org/">Nordstjernen</a> project, and this
-      page was published to Freenet with <code>fdev website publish</code>.</p>
-  </section>
-</main>
+<div class="rule"></div>
 
-<footer>Served over Freenet · no server answered for this page</footer>
+<h2>Where You Are</h2>
+<table class="box"><tr><td>
+  <table>
+    <tr><td class="label">Address:</td><td class="val" id="href">&mdash;</td></tr>
+    <tr><td class="label">Origin:</td><td class="val" id="origin">&mdash;</td></tr>
+    <tr><td class="label">Contract:</td><td class="val" id="key">&mdash;</td></tr>
+  </table>
+  <p class="small" style="color:#ccd">Read live by this page's own JavaScript.
+  The contract key is the origin's host &mdash; which is what stops one
+  contract reading another's storage.</p>
+</td></tr></table>
+
+<div class="rule"></div>
+
+<h2>Cool Links</h2>
+<table class="box"><tr><td>
+<ul class="links">
+  <li>&#9733; Type a <tt>freenet:</tt> address in the address bar</li>
+  <li>&#9733; Short ones like <tt>freenet:EqJ5YpEE</tt> get completed for you</li>
+  <li>&#9733; <a href="about:freenet">My Node Console</a> &mdash; is it connected?</li>
+  <li>&#9733; <a href="about:settings">Settings</a> &mdash; change the gateway</li>
+  <li>&#9733; <a href="https://nordstjernen.org/">Nordstjernen</a> &mdash; the mothership</li>
+</ul>
+</td></tr></table>
+
+<div class="rule"></div>
+
+<h2>About This Browser</h2>
+<table class="box"><tr><td>
+  <p>Northstar is a web browser written from scratch in <b>C</b>, with no
+  upstream browser engine. It speaks <tt>freenet:</tt> as a real URL scheme
+  instead of a bookmark to a local port, so every contract gets its own
+  origin.</p>
+  <p>Published with <tt>fdev website publish</tt>. No server answered for
+  this page.</p>
+</td></tr></table>
+
+<p>You are visitor number<br>
+<span class="counter" id="hits">00000042</span><br>
+<span class="small">(counter is decorative; nothing is tracked, ever)</span></p>
+
+<div class="rule"></div>
+
+<p class="ring">
+[ <a href="about:freenet">Node</a> ]
+[ <a href="about:start">Start</a> ]
+[ <a href="https://nordstjernen.org/">Nordstjernen</a> ]<br>
+<span class="small">Best viewed in Northstar at 800&times;600 &middot;
+<blink>Made on Freenet</blink></span>
+</p>
 
 <script>
   document.getElementById('href').textContent = location.href;
   document.getElementById('origin').textContent = location.origin;
   document.getElementById('key').textContent = location.hostname;
 </script>
+</div>
 </body>
 </html>

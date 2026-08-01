@@ -2925,6 +2925,12 @@ classify_error(long status, const char *transport_error, gboolean is_file_url,
         if (transport_error &&
             g_strstr_len(transport_error, -1, "contract address"))
             return &FREENET_BAD_ADDRESS;
+        /* Reachability first: a shortened address that could not be completed
+         * because nothing answered is a missing node, not a bad address. */
+        if (transport_error &&
+            (g_strstr_len(transport_error, -1, "onnect") ||
+             g_strstr_len(transport_error, -1, "refused")))
+            return &FREENET_NO_NODE;
         if (is_freenet_short)
             return &FREENET_SHORT_ADDRESS;
         if (status == 404 || status == 410 || status >= 500)
