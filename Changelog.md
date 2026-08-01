@@ -4,6 +4,30 @@ Significant changes in each release:
 
 1.0.7:
 ======
+* Freenet's River runs. The chat app is a Dioxus/Rust WebAssembly build
+  served as a shell page that wraps the real app in a sandboxed iframe,
+  and four separate engine gaps each stopped it before anything rendered.
+  A Content-Security-Policy was kept once per browser rather than once per
+  document, so the shell's policy -- which names no script host, correctly,
+  since all of its own scripts are inline -- was applied to the framed app,
+  whose policy does allow its origin, and the app's module was refused. A
+  framed document now carries the policy from its own response and
+  `<meta>`, and a resource is judged against the policy of the document
+  holding it, which also covers the stylesheets Dioxus attaches from a
+  timer long after the frame has loaded. `fetch()` resolved with an object
+  carrying `Response`'s properties and methods but not its prototype, so
+  `instanceof Response` was false and wasm-bindgen's loader read the
+  result as an already-compiled module and handed it to
+  `WebAssembly.instantiate`, which rejects it. A frame's realm global was
+  left an ordinary object, so `window instanceof Window` held at the top
+  level but not inside a frame; `web_sys::window()` makes exactly that
+  test, so Dioxus panicked with ``access to `window` `` and trapped. And a
+  message a frame posted to its parent was delivered nowhere, because the
+  check for whether the recipient was the top window compared it against
+  whichever realm was executing -- the frame's own, while its script runs.
+  River is sandboxed without network access of its own and proxies its
+  WebSocket through the shell that frames it, so every request it made was
+  dropped in silence.
 * Freenet is a URL scheme the browser speaks. `freenet://<contract-key>/`
   addresses are typed, linked, bookmarked and restored like any other, and
   the request is served by a Freenet node running on the machine --
