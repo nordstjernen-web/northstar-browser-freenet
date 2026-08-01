@@ -13,25 +13,6 @@ This is [Freenet](https://freenet.org/) — the peer-to-peer application
 platform, formerly developed under the name Locutus. It is not Hyphanet,
 and the difference matters when reading an address.
 
-### Not Hyphanet
-
-The original Freenet was renamed **Hyphanet** in 2023, freeing the name
-for the project above. They are separate networks with separate software,
-separate addressing and no interoperability. Hyphanet's URIs are a
-different grammar entirely:
-
-    freenet:[KeyType@]RoutingKey,CryptoKey[,extra_meta…][/docname][/metastring]
-
-where `KeyType` is `CHK`, `SSK`, `KSK` or `USK` — its parser
-(`FreenetURI.java` in hyphanet/fred) requires the `@`, rejects an address
-without one, and does not default to any key type. It also accepts the
-scheme spelled `hyphanet:`, `hypha:`, `web+freenet:` and `ext+freenet:`.
-
-Northstar implements the **freenet.org** scheme, where the host is a
-base58 contract key and there is no key type, routing key or crypto key.
-An address containing `@` therefore belongs to Hyphanet and will not
-resolve here.
-
 ## What Freenet is, for the purposes of the browser
 
 Freenet is a network of peers holding signed, content-addressed
@@ -452,3 +433,24 @@ exactly that way, unretouched. Note that the node serves a contract's own
 content inside a sandboxed frame and returns its shell page for the
 top-level navigation, so a site's markup lives one frame down; the
 address bar and the frame share the same `freenet:` origin.
+
+
+### Not Hyphanet
+
+The original Freenet was renamed **Hyphanet** in 2023, freeing the name
+for the project above. They are separate networks with separate software,
+separate addressing and no interoperability. Hyphanet's URIs are a
+different grammar entirely:
+
+    freenet:[KeyType@]RoutingKey,CryptoKey[,extra_meta…][/docname][/metastring]
+
+where `KeyType` is `CHK`, `SSK`, `KSK` or `USK` — its parser
+(`FreenetURI.java` in hyphanet/fred) requires the `@`, rejects an address
+without one, and does not default to any key type. It also accepts the
+scheme spelled `hyphanet:`, `hypha:`, `web+freenet:` and `ext+freenet:`.
+
+Northstar implements the **freenet.org** scheme, where the host is a
+base58 contract key and there is no key type, routing key or crypto key.
+An address containing `@` therefore belongs to Hyphanet and will not
+resolve here.
+
