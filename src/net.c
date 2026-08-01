@@ -2741,8 +2741,19 @@ typedef struct ns_error_info {
 
 static const ns_error_info *
 classify_error(long status, const char *transport_error, gboolean is_file_url,
-               gboolean is_freenet_url)
+               gboolean is_freenet_url, gboolean is_freenet_short)
 {
+    static const ns_error_info FREENET_SHORT_ADDRESS = {
+        "🕸",
+        "This address needs its full contract key",
+        "This address needs its full contract key",
+        "A node's web gateway resolves a contract only by its whole key, "
+        "around 43 base58 characters. It does not expand a shorter prefix: "
+        "given one it looks up a different contract entirely, which is why "
+        "this cannot be found however long you wait. Short forms are "
+        "expanded by the application that issued them — ask for the full "
+        "address, or open this one in the app it belongs to."
+    };
     static const ns_error_info FREENET_NO_NODE = {
         "🕸",
         "No Freenet node is running",
@@ -2913,6 +2924,8 @@ classify_error(long status, const char *transport_error, gboolean is_file_url,
         if (transport_error &&
             g_strstr_len(transport_error, -1, "contract address"))
             return &FREENET_BAD_ADDRESS;
+        if (is_freenet_short)
+            return &FREENET_SHORT_ADDRESS;
         if (status == 404 || status == 410 || status >= 500)
             return &FREENET_MISSING;
         if (transport_error &&
@@ -2981,8 +2994,11 @@ ns_build_error_page(const char *url, long status, const char *transport_error)
 {
     gboolean is_file_url = url && g_str_has_prefix(url, "file:");
     gboolean is_freenet_url = ns_freenet_is_url(url);
+    g_autofree char *freenet_key = is_freenet_url ? ns_freenet_key_of(url) : NULL;
+    gboolean is_freenet_short = freenet_key && !ns_freenet_key_is_full(freenet_key);
     const ns_error_info *info = classify_error(status, transport_error,
-                                               is_file_url, is_freenet_url);
+                                               is_file_url, is_freenet_url,
+                                               is_freenet_short);
     const char *safe_url = url && *url ? url : "(no URL)";
     char *esc_url = ns_html_escape_text(safe_url);
     char *esc_title = ns_html_escape_text(info->title);
@@ -3083,7 +3099,16 @@ ns_build_error_page(const char *url, long status, const char *transport_error)
         "<div class=\"tips\">"
         "<strong>What to try:</strong>"
         "<ul>");
-    if (is_freenet_url) {
+    if (is_freenet_short) {
+        g_string_append(out,
+            "<li>Ask whoever gave you this address for the full contract "
+            "key.</li>"
+            "<li>A full key looks like "
+            "<code>Gi5zrGqRvxce8JBuV11AvD3WK3hwCahd2Z7ktBaBLVpC</code> — "
+            "around 43 base58 characters.</li>"
+            "<li>If the short form came from an application, that "
+            "application is what knows how to expand it.</li>");
+    } else if (is_freenet_url) {
         char *esc_gateway = ns_html_escape_text(ns_freenet_gateway());
         g_string_append(out,
             "<li>Start a Freenet node on this machine and leave it "
