@@ -98,6 +98,34 @@ Everything above that layer — the HTML parser, CSS, the JavaScript
 bindings, the HTTP cache, CSP — sees a `freenet:` document throughout and
 needs no special case.
 
+## The node's Content-Security-Policy
+
+A node sends a CSP with everything it serves, written in terms of its own
+gateway origin:
+
+    default-src http://127.0.0.1:7509 'unsafe-inline' 'unsafe-eval' blob: data:;
+    connect-src http://127.0.0.1:7509 blob: data:
+
+Taken literally against a `freenet:` document that policy blocks the
+contract's own scripts, styles and images, because they are
+`freenet://<key>/…` and no source expression names that origin. So a
+policy that names the gateway origin is **widened** with the document's
+own Freenet origin as the response comes back
+(`ns_freenet_localize_csp`). The gateway source is kept, which is what
+keeps `ws://<gateway>/v1/contract/command` allowed under CSP3's rule that
+an `http` source also matches `ws` and `wss`.
+
+Nothing is granted that was not already reachable: the gateway origin and
+the Freenet origin are the same bytes over the same connection. Only the
+document's *own* origin is added, so a policy that would have let one
+contract pull another contract's assets off the shared gateway origin
+becomes stricter, not looser.
+
+The mirror of this applies to `WebSocket` and `EventSource`: both are
+CSP-checked against the URL the document asked for, *before* the URL is
+mapped to the node, so `connect-src 'self'` means the contract's own
+origin as the page author intended.
+
 ## Origins and isolation
 
 `freenet://<key>` is a tuple origin, alongside `http`, `https`, `ws`,
@@ -142,6 +170,13 @@ only — no scheme, no path.
 `7509` is the default port for a Freenet node's local HTTP/WebSocket API.
 Point this elsewhere if the node listens on another port, or at the local
 end of an SSH tunnel to a node on another machine.
+
+A scheme may be given, and `https://` reaches a node behind TLS — a
+hosted gateway, or the far end of a tunnel that terminates TLS:
+
+    freenet_gateway = https://gateway.example.org
+
+WebSocket URLs follow it: an `https` gateway is reached over `wss`.
 
 Confirm what is in effect with:
 
@@ -188,3 +223,29 @@ HTTP (`classify_error` in `src/net.c`):
   from any page in any browser that can open `ws://127.0.0.1:7509`, so
   bind the node to loopback and treat access to that port as full access
   to the node.
+- **The node's session cookie is not replayed.** A node answers with an
+  `authorization` bearer cookie scoped to the contract's gateway path.
+  Because the document is first-party to `freenet://<key>` and the
+  request is made to the gateway, the default first-party cookie policy
+  does not send it back. Node web content does not require it. The effect
+  is that a contract cannot have the browser replay a token it was
+  issued.
+
+## Verifying it
+
+Everything above was checked against a real node — the official
+`freenet` v0.2.116 release, joined to the live network — rather than a
+stand-in:
+
+```sh
+freenet network --ws-api-address 127.0.0.1 --ws-api-port 7509
+fdev website init my-site
+fdev website publish ./my-site/ --key my-site
+northstar "freenet://<the key it printed>/"
+```
+
+[`screenshot.png`](screenshot.png) is that, unretouched. Note that the
+node serves a contract's own content inside a sandboxed frame and returns
+its shell page for the top-level navigation, so a site's markup lives one
+frame down; the address bar and the frame share the same `freenet:`
+origin.

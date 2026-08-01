@@ -1,11 +1,17 @@
-# Northstar web browser
+# Northstar web browser — with Freenet support
 
-![Northstar showing its about:start page](docs/screenshot.png)
+![Northstar showing a site published to Freenet, at a freenet:// address](docs/screenshot.png)
 
-Northstar is a minimalist web browser written from scratch in C. Its
-engine targets practical HTML5, modern CSS and JavaScript compatibility
-without embedding Gecko, WebKit, Blink or another browser engine. Linux
-is the primary platform; macOS and Windows are also supported.
+Northstar is a minimalist web browser written from scratch in C, and it
+speaks two networks. It browses the web, and it browses
+[Freenet](https://freenet.org/) — the peer-to-peer application platform —
+as a first-class URL scheme rather than through a bookmark to a local
+port.
+
+Its engine targets practical HTML5, modern CSS and JavaScript
+compatibility without embedding Gecko, WebKit, Blink or another browser
+engine. Linux is the primary platform; macOS and Windows are also
+supported.
 
 This repository is the open-source GPL edition of the
 [Nordstjernen project](https://github.com/nordstjernen-web/nordstjernen).
@@ -13,6 +19,11 @@ Northstar is licensed under the GNU General Public License, version 3 or
 later.
 
 ![Best viewed in Northstar](docs/best-viewed-in-northstar.gif)
+
+**Freenet:** `freenet://<contract-key>/` is typed, linked, bookmarked and
+restored like any other address, and each contract key is its own origin.
+See [Freenet](#freenet) below and
+[docs/freenet.md](docs/freenet.md).
 
 **Web standards:** Behaviour is measured against the specification text,
 section by section, not against another browser. The engine runs
@@ -29,6 +40,45 @@ See [SECURITY.md](SECURITY.md) for the exact per-mode posture.
 compact body of C — about 149,000 lines of original C (excluding the
 vendored WAMR, Wuffs and audio decoders, and the generated image-data
 tables) — small enough for one person to read and audit end-to-end.
+
+## Freenet
+
+Freenet is a network of peers holding signed, content-addressed
+**contracts**. A contract's key is permanent — publishing new content
+under it does not change the address — and a contract whose state is an
+archive of HTML, CSS and JavaScript is a website. Reaching the network
+needs a Freenet node running on your machine; Northstar is a client of
+that node, and finds it at `127.0.0.1:7509` by default.
+
+```sh
+# with a node running (see freenet.org)
+northstar "freenet://Gi5zrGqRvxce8JBuV11AvD3WK3hwCahd2Z7ktBaBLVpC/"
+```
+
+The address bar keeps the `freenet:` URL; only the transfer itself is
+addressed to the node. That is what makes each contract key a real
+origin, and it buys three things:
+
+- **Contracts are isolated from each other.** `localStorage`, IndexedDB
+  and the cache are keyed per contract, and one contract cannot `fetch`
+  another's data. Point a conventional browser at the node's gateway
+  instead and every contract shares one `http://127.0.0.1:7509` origin.
+- **The web stays out.** A page on `https://example.com` cannot read
+  Freenet content — it is cross-origin, and the node sends no CORS
+  headers.
+- **Applications work unmodified.** Links written the way the Freenet
+  documentation asks — absolute against `/v1/contract/web/<key>/` —
+  collapse to the address they name, and a contract's own JavaScript
+  opens the node's client API at `/v1/contract/command` exactly as it
+  would on the gateway.
+
+The screenshot above is a site published with `fdev website publish` and
+served by a local node joined to the live network. The gateway address is
+configurable (`freenet_gateway`, `NS_FREENET_GATEWAY`, or **Settings →
+General**) and accepts an `https://` gateway as well as loopback.
+
+The older `freenet:USK@…` network, now called Hyphanet, is a different
+project and is not supported.
 
 ## What this edition is
 
@@ -64,11 +114,8 @@ libavif when available, and SVG in the engine).
 - **Networking** over HTTP/2 with libcurl — HTTP/3 when the linked
   libcurl provides it — HSTS, CSP, subresource-integrity (SRI) checks,
   partitioned cookies.
-- **Freenet** — `freenet://<contract-key>/` is a URL scheme the browser
-  speaks natively, served by a [Freenet](https://freenet.org/) node
-  running on the machine. Each contract key is its own origin, so
-  contracts are isolated from each other and from the web. See
-  [docs/freenet.md](docs/freenet.md).
+- **Freenet** — the `freenet:` scheme, served by a local node, with each
+  contract key its own origin. See [Freenet](#freenet).
 - **Safe browsing** — before a top-level navigation is fetched, its host
   is checked against a local SHA-256 blocklist. The check runs entirely
   on-device.
@@ -122,6 +169,10 @@ single page can also be rendered directly:
 
 Meson feature options include `-Davif=disabled`, `-Daudio=disabled`,
 `-Dwasm=disabled` and `-Dgtk=disabled` for smaller or engine-only builds.
+
+Freenet needs no build option and no extra library — the scheme is part
+of the browser. It needs a running node, which is installed separately
+from [freenet.org](https://freenet.org/).
 
 WAMR, Wuffs, pl_mpeg and minimp3 are vendored in-tree. lexbor and
 quickjs-ng are fetched by `meson setup` as pinned upstream subprojects
