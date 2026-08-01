@@ -5489,6 +5489,11 @@ ns_fetch_sync(const char *url, const char *top_url, const char *method,
         resp->final_url = localized ? localized : g_strdup(freenet_url);
         if (resp->security == NS_SEC_PLAIN)
             resp->security = NS_SEC_FREENET;
+        char *csp = ns_freenet_localize_csp(resp->csp_header, resp->final_url);
+        if (csp) {
+            g_free(resp->csp_header);
+            resp->csp_header = csp;
+        }
     }
     g_free(cur_url);
     g_free(cur_top);

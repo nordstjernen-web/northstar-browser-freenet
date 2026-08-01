@@ -43,6 +43,32 @@ ns_freenet_gateway(void)
     return NS_FREENET_DEFAULT_GATEWAY;
 }
 
+char *
+ns_freenet_gateway_base(gboolean websocket)
+{
+    const char *gateway = ns_freenet_gateway();
+    const char *authority = gateway;
+    gboolean tls = FALSE;
+
+    if (g_ascii_strncasecmp(gateway, "https://", 8) == 0) {
+        tls = TRUE;
+        authority = gateway + 8;
+    } else if (g_ascii_strncasecmp(gateway, "http://", 7) == 0) {
+        authority = gateway + 7;
+    }
+
+    size_t len = strlen(authority);
+    while (len && authority[len - 1] == '/') len--;
+    if (!len) return NULL;
+
+    const char *transport = websocket ? (tls ? "wss://" : "ws://")
+                                      : (tls ? "https://" : "http://");
+    char *host = g_strndup(authority, len);
+    char *base = g_strconcat(transport, host, NULL);
+    g_free(host);
+    return base;
+}
+
 static gboolean
 ns_freenet_take_key(const char *p, char **key_out, char **rest_out)
 {
@@ -105,17 +131,19 @@ ns_freenet_canonical_url(const char *input)
 }
 
 static char *
-ns_freenet_map(const char *url, const char *transport)
+ns_freenet_map(const char *url, gboolean websocket)
 {
     char *key = NULL, *rest = NULL;
     if (!ns_freenet_split(url, &key, &rest)) return NULL;
 
-    const char *gateway = ns_freenet_gateway();
-    char *out = g_str_has_prefix(rest, NS_FREENET_API_PATH)
-        ? g_strconcat(transport, gateway, "/", rest, NULL)
-        : g_strconcat(transport, gateway, "/", NS_FREENET_WEB_PATH,
-                      key, "/", rest, NULL);
+    char *base = ns_freenet_gateway_base(websocket);
+    char *out = NULL;
+    if (base)
+        out = g_str_has_prefix(rest, NS_FREENET_API_PATH)
+            ? g_strconcat(base, "/", rest, NULL)
+            : g_strconcat(base, "/", NS_FREENET_WEB_PATH, key, "/", rest, NULL);
 
+    g_free(base);
     g_free(key);
     g_free(rest);
     return out;
@@ -124,13 +152,42 @@ ns_freenet_map(const char *url, const char *transport)
 char *
 ns_freenet_to_gateway(const char *url)
 {
-    return ns_freenet_map(url, "http://");
+    return ns_freenet_map(url, FALSE);
 }
 
 char *
 ns_freenet_to_gateway_ws(const char *url)
 {
-    return ns_freenet_map(url, "ws://");
+    return ns_freenet_map(url, TRUE);
+}
+
+char *
+ns_freenet_localize_csp(const char *csp, const char *url)
+{
+    if (!csp || !*csp) return NULL;
+
+    char *base = ns_freenet_gateway_base(FALSE);
+    if (!base) return NULL;
+    if (!strstr(csp, base)) {
+        g_free(base);
+        return NULL;
+    }
+
+    char *key = ns_freenet_key_of(url);
+    if (!key) {
+        g_free(base);
+        return NULL;
+    }
+
+    char *widened = g_strconcat(base, " freenet://", key, NULL);
+    char **parts = g_strsplit(csp, base, -1);
+    char *out = g_strjoinv(widened, parts);
+
+    g_strfreev(parts);
+    g_free(widened);
+    g_free(key);
+    g_free(base);
+    return out;
 }
 
 char *
@@ -138,8 +195,10 @@ ns_freenet_from_gateway(const char *url)
 {
     if (!url) return NULL;
 
-    char *prefix = g_strconcat("http://", ns_freenet_gateway(), "/",
-                               NS_FREENET_WEB_PATH, NULL);
+    char *base = ns_freenet_gateway_base(FALSE);
+    if (!base) return NULL;
+    char *prefix = g_strconcat(base, "/", NS_FREENET_WEB_PATH, NULL);
+    g_free(base);
     gboolean matched = g_str_has_prefix(url, prefix);
     size_t prefix_len = strlen(prefix);
     g_free(prefix);
