@@ -123,6 +123,8 @@ typedef struct {
     GtkWidget      *downloads_win;
     GtkWidget      *downloads_list;
     GtkWidget      *freenet_button;
+    GtkWidget      *freenet_icon;
+    GtkWidget      *freenet_label;
     guint           freenet_timer;
     gboolean        freenet_polling;
 } ProcWindow;
@@ -309,21 +311,25 @@ freenet_indicator_apply(ProcWindow *pw, ns_freenet_status *status)
     if (!pw->freenet_button) return;
 
     const char *state = "down";
+    const char *icon = "network-offline-symbolic";
     g_autofree char *tip = NULL;
     if (!status->reachable) {
         tip = g_strconcat(ns_i18n("No Freenet node is answering at "),
                           ns_freenet_gateway(), NULL);
     } else if (status->detailed && status->peers == 0) {
         state = "warn";
+        icon = "network-no-route-symbolic";
         tip = g_strdup(ns_i18n("The Freenet node is running but has found no "
                                "peers yet"));
     } else if (status->detailed) {
         state = "up";
+        icon = "network-transmit-receive-symbolic";
         tip = g_strdup_printf("%s %d",
                               ns_i18n("Freenet node — connected peers:"),
                               status->peers);
     } else {
         state = "up";
+        icon = "network-idle-symbolic";
         tip = g_strdup(ns_i18n("The Freenet node is running"));
     }
 
@@ -332,10 +338,15 @@ freenet_indicator_apply(ProcWindow *pw, ns_freenet_status *status)
     gtk_widget_remove_css_class(pw->freenet_button, "down");
     gtk_widget_add_css_class(pw->freenet_button, state);
 
-    g_autofree char *label = status->detailed && status->reachable
-        ? g_strdup_printf("\xe2\x97\x8f %d", status->peers)
-        : g_strdup("\xe2\x97\x8f");
-    gtk_button_set_label(GTK_BUTTON(pw->freenet_button), label);
+    gtk_image_set_from_icon_name(GTK_IMAGE(pw->freenet_icon), icon);
+
+    gboolean show_peers = status->detailed && status->reachable;
+    if (show_peers) {
+        g_autofree char *peers = g_strdup_printf("%d", status->peers);
+        gtk_label_set_text(GTK_LABEL(pw->freenet_label), peers);
+    }
+    gtk_widget_set_visible(pw->freenet_label, show_peers);
+
     gtk_widget_set_tooltip_text(pw->freenet_button, tip);
     set_accessible_label(pw->freenet_button, tip);
 }
@@ -1777,7 +1788,15 @@ proc_window_new(GtkApplication *app, const char *home_url,
                                           ns_i18n("Bookmarks"),
                                           G_CALLBACK(on_bookmarks_clicked), pw);
 
-    pw->freenet_button = gtk_button_new_with_label("\xe2\x97\x8f");
+    GtkWidget *freenet_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+    pw->freenet_icon = gtk_image_new_from_icon_name("network-offline-symbolic");
+    pw->freenet_label = gtk_label_new(NULL);
+    gtk_widget_set_visible(pw->freenet_label, FALSE);
+    gtk_box_append(GTK_BOX(freenet_box), pw->freenet_icon);
+    gtk_box_append(GTK_BOX(freenet_box), pw->freenet_label);
+
+    pw->freenet_button = gtk_button_new();
+    gtk_button_set_child(GTK_BUTTON(pw->freenet_button), freenet_box);
     gtk_button_set_has_frame(GTK_BUTTON(pw->freenet_button), FALSE);
     gtk_widget_add_css_class(pw->freenet_button, "ns-freenet");
     gtk_widget_add_css_class(pw->freenet_button, "down");

@@ -39,24 +39,102 @@ ns_nodectl_verb_is_known(const char *verb)
 
 #ifdef G_OS_WIN32
 
+/* No privilege-dropping supervisor is needed here: the Windows build runs
+ * without the seccomp/Landlock confinement the Unix one drops into, so the
+ * browser can run the node's own service commands directly. */
 int  ns_nodectl_supervisor_open(void)   { return -1; }
 void ns_nodectl_supervisor_listen(void) { }
 void ns_nodectl_supervisor_close(void)  { }
 
+static char *
+ns_nodectl_find_node(void)
+{
+    char *found = g_find_program_in_path("freenet");
+    if (found) return found;
+
+    const char *local = g_get_user_data_dir();
+    const char *programs = g_getenv("ProgramFiles");
+    const char *localapp = g_getenv("LOCALAPPDATA");
+    g_autofree char *a = local
+        ? g_build_filename(local, "freenet", "freenet.exe", NULL) : NULL;
+    g_autofree char *b = programs
+        ? g_build_filename(programs, "Freenet", "freenet.exe", NULL) : NULL;
+    g_autofree char *c = localapp
+        ? g_build_filename(localapp, "Programs", "Freenet", "freenet.exe", NULL)
+        : NULL;
+    const char *candidates[] = { a, b, c, NULL };
+    for (int i = 0; candidates[i]; i++)
+        if (g_file_test(candidates[i], G_FILE_TEST_IS_REGULAR))
+            return g_strdup(candidates[i]);
+    return NULL;
+}
+
 gboolean
 ns_nodectl_available(void)
 {
-    return FALSE;
+    g_autofree char *node = ns_nodectl_find_node();
+    return node != NULL;
+}
+
+const char *
+ns_nodectl_mechanism(void)
+{
+    return "Northstar runs the node's own service commands.";
 }
 
 gboolean
 ns_nodectl_run(const char *verb, char **output)
 {
-    (void)verb;
-    if (output)
-        *output = g_strdup("The Freenet node is managed by its own Windows "
-                           "service; use the tray icon it installs.");
-    return FALSE;
+    if (output) *output = NULL;
+    if (!ns_nodectl_verb_is_known(verb)) {
+        if (output) *output = g_strdup("Unknown command.");
+        return FALSE;
+    }
+
+    g_autofree char *node = ns_nodectl_find_node();
+    if (!node) {
+        if (output)
+            *output = g_strdup("No freenet executable was found. Install a "
+                               "node from freenet.org, or put freenet.exe on "
+                               "PATH.");
+        return FALSE;
+    }
+    if (g_strcmp0(verb, "ping") == 0) {
+        if (output) *output = g_strdup("ok");
+        return TRUE;
+    }
+
+    char *argv[] = { node, (char *)"service", (char *)verb, NULL };
+    g_autofree char *out = NULL;
+    g_autofree char *err = NULL;
+    int status = 0;
+    GError *error = NULL;
+
+    if (!g_spawn_sync(NULL, argv, NULL,
+                      G_SPAWN_DEFAULT, NULL, NULL,
+                      &out, &err, &status, &error)) {
+        if (output)
+            *output = g_strdup_printf("Could not run %s service %s: %s",
+                                      node, verb,
+                                      error ? error->message : "failed");
+        g_clear_error(&error);
+        return FALSE;
+    }
+
+    gboolean ok = g_spawn_check_wait_status(status, &error);
+    g_clear_error(&error);
+
+    GString *text = g_string_new(NULL);
+    if (out && *out) g_string_append(text, g_strstrip(out));
+    if (err && *err) {
+        if (text->len) g_string_append_c(text, '\n');
+        g_string_append(text, g_strstrip(err));
+    }
+    if (!text->len)
+        g_string_append(text, ok ? "done" : "the node reported no output");
+    if (output) *output = g_string_free(text, FALSE);
+    else        g_string_free(text, TRUE);
+    return ok;
 }
 
 #else
@@ -321,6 +399,13 @@ gboolean
 ns_nodectl_available(void)
 {
     return ns_nodectl_client_fd() >= 0;
+}
+
+const char *
+ns_nodectl_mechanism(void)
+{
+    return "Northstar asks its supervisor process to run the node's own "
+           "service commands.";
 }
 
 gboolean

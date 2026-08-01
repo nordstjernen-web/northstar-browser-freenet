@@ -4274,7 +4274,18 @@ static const char k_about_freenet_html[] =
 "margin:12px 0 0}\n"
 "p.note{color:#8a93a3;font-size:.85em;margin:10px 0 0}\n"
 "a{color:#2d6cf6}\n"
+"input[type=text]{font:inherit;flex:1;min-width:16em;padding:9px 12px;"
+"border:1px solid #d3d9e4;border-radius:8px;background:#fff;color:inherit}\n"
+"ul.keys{list-style:none;margin:10px 0 0;padding:0;max-height:19em;"
+"overflow:auto}\n"
+"ul.keys li{margin:0;padding:3px 0;border-bottom:1px solid #eceff4}\n"
+"ul.keys li:last-child{border-bottom:0}\n"
+"ul.keys a{font-family:ui-monospace,\"Cascadia Mono\",Consolas,monospace;"
+"font-size:.85em;text-decoration:none;overflow-wrap:anywhere}\n"
+"ul.keys a:hover{text-decoration:underline}\n"
 "@media (prefers-color-scheme: dark){\n"
+"input[type=text]{background:#14161b;border-color:#343841}\n"
+"ul.keys li{border-bottom-color:#262a33}\n"
 "html,body{background:#16181d;color:#e6e8ec}\n"
 ".bar{background:#10131a}\n"
 ".card{background:#1d2027;box-shadow:0 1px 3px rgba(0,0,0,.4)}\n"
@@ -4298,6 +4309,17 @@ static const char k_about_freenet_html[] =
 "<div class=\"row\"><button id=\"refresh\" class=\"ghost\">Refresh</button>"
 "<a id=\"dash\" href=\"#\">Node dashboard</a>"
 "<a href=\"about:settings\">Settings</a></div>\n"
+"</section>\n"
+"<section class=\"card\"><h2>Open an address</h2>\n"
+"<div class=\"row\"><input id=\"addr\" type=\"text\" spellcheck=\"false\" "
+"placeholder=\"freenet:Gi5zrGqR\xe2\x80\xa6 or a whole contract key\">"
+"<button id=\"go\">Open</button></div>\n"
+"<p class=\"note\">A shortened address is completed against the contracts "
+"below before it is fetched.</p>\n"
+"</section>\n"
+"<section class=\"card\"><h2>Contracts this node knows</h2>\n"
+"<p class=\"note\" id=\"knownnote\">\xe2\x80\x94</p>\n"
+"<ul id=\"known\" class=\"keys\"></ul>\n"
 "</section>\n"
 "<section class=\"card\"><h2>Control</h2>\n"
 "<div class=\"row\"><button id=\"start\">Start node</button>"
@@ -4337,11 +4359,22 @@ static const char k_about_freenet_html[] =
 "  ['start','stop','restart','status'].forEach(function(id){"
 "$(id).dataset.enabled=c.control?'1':'';});\n"
 "  setBusy(busy);\n"
-"  $('controlnote').textContent=c.control?"
-"'Northstar asks its supervisor process to run the node\\u2019s own "
-"service commands.':c.control_reason;\n"
+"  $('controlnote').textContent=c.control?c.control_how:c.control_reason;\n"
+"  var ul=$('known');ul.textContent='';\n"
+"  var keys=c.known||[];\n"
+"  $('knownnote').textContent=keys.length?"
+"(keys.length+' contract'+(keys.length===1?'':'s')+"
+"' \\u2014 these are what a shortened address can be completed against'):"
+"(c.reachable?'The node reported none yet.':"
+"'Not available while no node is answering.');\n"
+"  keys.forEach(function(k){var li=document.createElement('li');"
+"var a=document.createElement('a');a.href='freenet://'+k+'/';"
+"a.textContent=k;li.appendChild(a);ul.appendChild(li);});\n"
 "  if(c.error) add(c.error);\n"
 "}\n"
+"function open_address(){var v=$('addr').value.trim();if(!v)return;"
+"if(!/^freenet:/i.test(v))v='freenet://'+v.replace(/^\\/+/,'');"
+"location.href=v;}\n"
 "function load(){return fetch('about:freenet-data').then(function(r){"
 "return r.json();}).then(render).catch(function(e){say('' + e);});}\n"
 "function control(verb){if(busy)return;setBusy(true);"
@@ -4352,6 +4385,9 @@ static const char k_about_freenet_html[] =
 "say(j.output||(j.ok?'done':'failed'));setBusy(false);"
 "return load();}).catch(function(e){say('' + e);setBusy(false);});}\n"
 "$('refresh').addEventListener('click',load);\n"
+"$('go').addEventListener('click',open_address);\n"
+"$('addr').addEventListener('keydown',function(e){"
+"if(e.key==='Enter')open_address();});\n"
 "['start','stop','restart','status'].forEach(function(id){"
 "$(id).addEventListener('click',function(){control(id);});});\n"
 "load();setInterval(load,10000);\n"
@@ -4576,18 +4612,41 @@ about_freenet_json(void)
     g_autofree char *reason_json = about_json_escape(reason ? reason : "");
     g_free(reason);
 
+    g_autoptr(GString) known = g_string_new("[");
+    if (status->reachable) {
+        GByteArray *diagnostics = ns_freenet_node_diagnostics();
+        if (diagnostics) {
+            g_autoptr(GPtrArray) keys = g_ptr_array_new_with_free_func(g_free);
+            ns_freenet_collect_keys(diagnostics->data, diagnostics->len, keys);
+            g_byte_array_free(diagnostics, TRUE);
+            g_ptr_array_sort_values(keys, (GCompareFunc)g_strcmp0);
+            const char *previous = NULL;
+            for (guint i = 0; i < keys->len; i++) {
+                const char *key = g_ptr_array_index(keys, i);
+                if (!ns_freenet_key_is_full(key)) continue;
+                if (previous && g_strcmp0(previous, key) == 0) continue;
+                previous = key;
+                if (known->len > 1) g_string_append_c(known, ',');
+                g_string_append_printf(known, "\"%s\"", key);
+            }
+        }
+    }
+    g_string_append_c(known, ']');
+
     char *json = g_strdup_printf(
         "{\"gateway\":\"%s\",\"dashboard\":\"%s/\",\"reachable\":%s,"
         "\"http_status\":%ld,\"detailed\":%s,\"peers\":%d,\"connections\":%d,"
         "\"contracts\":%d,\"uptime\":%" G_GINT64_FORMAT ",\"is_gateway\":%s,"
         "\"peer_id\":\"%s\",\"error\":\"%s\",\"control\":%s,"
-        "\"control_reason\":\"%s\",\"websocket\":%s}",
+        "\"control_reason\":\"%s\",\"websocket\":%s,\"known\":%s,"
+        "\"control_how\":\"%s\"}",
         gateway, dashboard, status->reachable ? "true" : "false",
         status->http_status, status->detailed ? "true" : "false",
         status->peers, status->connections, status->contracts,
         status->uptime_seconds, status->is_gateway ? "true" : "false",
         peer_id, error, control ? "true" : "false",
-        reason_json, ns_ws_available() ? "true" : "false");
+        reason_json, ns_ws_available() ? "true" : "false", known->str,
+        ns_nodectl_mechanism());
     ns_freenet_status_free(status);
     return json;
 }

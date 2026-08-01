@@ -18,6 +18,7 @@ void     ns_nodectl_supervisor_close(void);
 
 gboolean ns_nodectl_verb_is_known(const char *verb);
 gboolean ns_nodectl_available(void);
+const char *ns_nodectl_mechanism(void);
 gboolean ns_nodectl_run(const char *verb, char **output);
 
 G_END_DECLS
