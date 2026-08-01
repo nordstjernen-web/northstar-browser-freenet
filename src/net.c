@@ -4339,7 +4339,7 @@ static const char k_about_freenet_html[] =
 "function say(t){var l=$('log');l.textContent=t;}\n"
 "function add(t){var l=$('log');l.textContent=(l.textContent+'\\n'+t).trim();"
 "l.scrollTop=l.scrollHeight;}\n"
-"var busy=false;\n"
+"var busy=false;var polling=false;\n"
 "function setBusy(b){busy=b;['start','stop','restart','status'].forEach("
 "function(id){$(id).disabled=b||!$(id).dataset.enabled;});}\n"
 "function render(c){\n"
@@ -4372,20 +4372,24 @@ static const char k_about_freenet_html[] =
 "  keys.forEach(function(k){var li=document.createElement('li');"
 "var a=document.createElement('a');a.href='freenet://'+k+'/';"
 "a.textContent=k;li.appendChild(a);ul.appendChild(li);});\n"
+"  if(c.job){"
+"if(c.job.running){busy=true;say(c.job.verb+'\\u2026');"
+"if(!polling){polling=true;setTimeout(poll,400);}}"
+"else{if(busy||c.job.output)say(c.job.output||"
+"(c.job.ok?'done':'failed'));busy=false;polling=false;}}\n"
 "  if(c.error) add(c.error);\n"
 "}\n"
 "function open_address(){var v=$('addr').value.trim();if(!v)return;"
 "if(!/^freenet:/i.test(v))v='freenet://'+v.replace(/^\\/+/,'');"
 "location.href=v;}\n"
-"function load(){return fetch('about:freenet-data').then(function(r){"
+"function load(q){return fetch('about:freenet-data'+(q||'')).then(function(r){"
 "return r.json();}).then(render).catch(function(e){say('' + e);});}\n"
 "function control(verb){if(busy)return;setBusy(true);"
-"say(verb + '\\u2026');"
-"fetch('about:freenet-control',{method:'POST',headers:{'Content-Type':"
-"'application/x-www-form-urlencoded'},body:'verb='+verb})"
-".then(function(r){return r.json();}).then(function(j){"
-"say(j.output||(j.ok?'done':'failed'));setBusy(false);"
-"return load();}).catch(function(e){say('' + e);setBusy(false);});}\n"
+"say(verb+'\\u2026');location.href='about:freenet/'+verb;}\n"
+/* While a command runs, read the status more often than the idle rate so
+   its output appears promptly once the thread finishes. */
+"function poll(){if(!busy)return;load().then(function(){"
+"setTimeout(poll,700);});}\n"
 "$('refresh').addEventListener('click',load);\n"
 "$('go').addEventListener('click',open_address);\n"
 "$('addr').addEventListener('keydown',function(e){"
@@ -4596,6 +4600,8 @@ about_settings_json(void)
     return json;
 }
 
+static char *about_freenet_job_json(void);
+
 static char *
 about_freenet_json(void)
 {
@@ -4609,6 +4615,7 @@ about_freenet_json(void)
     g_autofree char *error =
         about_json_escape(status->error ? status->error : "");
 
+    g_autofree char *job = about_freenet_job_json();
     char *reason = NULL;
     gboolean control = ns_nodectl_run("ping", &reason);
     g_autofree char *reason_json = about_json_escape(reason ? reason : "");
@@ -4641,32 +4648,88 @@ about_freenet_json(void)
         "\"contracts\":%d,\"uptime\":%" G_GINT64_FORMAT ",\"is_gateway\":%s,"
         "\"peer_id\":\"%s\",\"error\":\"%s\",\"control\":%s,"
         "\"control_reason\":\"%s\",\"websocket\":%s,\"known\":%s,"
-        "\"control_how\":\"%s\"}",
+        "\"control_how\":\"%s\",\"job\":%s}",
         gateway, dashboard, status->reachable ? "true" : "false",
         status->http_status, status->detailed ? "true" : "false",
         status->peers, status->connections, status->contracts,
         status->uptime_seconds, status->is_gateway ? "true" : "false",
         peer_id, error, control ? "true" : "false",
         reason_json, ns_ws_available() ? "true" : "false", known->str,
-        ns_nodectl_mechanism());
+        ns_nodectl_mechanism(), job);
     ns_freenet_status_free(status);
     return json;
 }
 
-static char *
-about_freenet_control(const char *form)
+/* A node command takes as long as the node takes, and an about: response is
+ * produced synchronously — running it here stalls the thread that would hand
+ * the answer back to the page, so the request never completes. The command
+ * runs on its own thread instead and the console reads the result from the
+ * status feed it already polls. */
+static GMutex   g_node_job_lock;
+static gboolean g_node_job_running;
+static char    *g_node_job_verb;
+static char    *g_node_job_output;
+static gboolean g_node_job_ok;
+static guint    g_node_job_seq;
+
+static gpointer
+about_freenet_job(gpointer data)
 {
-    GHashTable *q = form && *form
-        ? g_uri_parse_params(form, -1, "&", G_URI_PARAMS_WWW_FORM, NULL)
-        : NULL;
-    const char *verb = q ? g_hash_table_lookup(q, "verb") : NULL;
+    char *verb = data;
     char *output = NULL;
-    gboolean ok = ns_nodectl_run(verb ? verb : "", &output);
-    if (q) g_hash_table_unref(q);
-    g_autofree char *escaped = about_json_escape(output ? output : "");
-    g_free(output);
-    return g_strdup_printf("{\"ok\":%s,\"output\":\"%s\"}",
-                           ok ? "true" : "false", escaped);
+    gboolean ok = ns_nodectl_run(verb, &output);
+
+    g_mutex_lock(&g_node_job_lock);
+    g_free(g_node_job_output);
+    g_node_job_output = output;
+    g_node_job_ok = ok;
+    g_node_job_running = FALSE;
+    g_node_job_seq++;
+    g_mutex_unlock(&g_node_job_lock);
+
+    g_free(verb);
+    return NULL;
+}
+
+static char *
+about_freenet_job_json(void)
+{
+    g_mutex_lock(&g_node_job_lock);
+    g_autofree char *verb = about_json_escape(g_node_job_verb ? g_node_job_verb : "");
+    g_autofree char *out = about_json_escape(g_node_job_output ? g_node_job_output : "");
+    char *json = g_strdup_printf(
+        "{\"running\":%s,\"verb\":\"%s\",\"ok\":%s,\"output\":\"%s\",\"seq\":%u}",
+        g_node_job_running ? "true" : "false", verb,
+        g_node_job_ok ? "true" : "false", out, g_node_job_seq);
+    g_mutex_unlock(&g_node_job_lock);
+    return json;
+}
+
+static char *
+about_freenet_control_start(const char *verb)
+{
+    if (!ns_nodectl_verb_is_known(verb))
+        return g_strdup("{\"ok\":false,\"started\":false,"
+                        "\"output\":\"Unknown command.\"}");
+
+    g_mutex_lock(&g_node_job_lock);
+    gboolean busy = g_node_job_running;
+    if (!busy) {
+        g_node_job_running = TRUE;
+        g_free(g_node_job_verb);
+        g_node_job_verb = g_strdup(verb);
+        g_free(g_node_job_output);
+        g_node_job_output = NULL;
+    }
+    g_mutex_unlock(&g_node_job_lock);
+
+    char *started = busy ? NULL : g_strdup(verb);
+    if (busy)
+        return g_strdup("{\"ok\":false,\"started\":false,"
+                        "\"output\":\"A command is already running.\"}");
+
+    g_thread_unref(g_thread_new("ns-nodectl-job", about_freenet_job, started));
+    return g_strdup("{\"ok\":true,\"started\":true,\"output\":\"\"}");
 }
 
 static void
@@ -4868,15 +4931,36 @@ synthesize_about_response(const char *url, const char *top_url,
     } else if (g_str_has_prefix(what, "settings-clear")) {
         about_settings_clear();
         about_emit_json(resp, g_strdup("{\"ok\":true}"));
+    } else if (g_str_has_prefix(what, "freenet/")) {
+        /* about:freenet/<verb> starts a command and serves the console. The
+         * button navigates here rather than fetching, because a fetch of an
+         * about: URL carrying anything beyond a bare path does not settle.
+         * The command runs on its own thread, so this returns at once and the
+         * answer appears in a later status reading. */
+        g_free(about_freenet_control_start(what + strlen("freenet/")));
+        g_byte_array_append(resp->body, (const guint8 *)k_about_freenet_html,
+                            (guint)strlen(k_about_freenet_html));
     } else if (g_str_equal(what, "freenet")) {
         g_byte_array_append(resp->body, (const guint8 *)k_about_freenet_html,
                             (guint)strlen(k_about_freenet_html));
     } else if (g_str_has_prefix(what, "freenet-data")) {
+        /* A verb may be appended to the path — about:freenet-data/start —
+         * rather than passed as a query or a body, because only the plainest
+         * about: GET settles when fetched from a page. Starting the job here
+         * means the console never waits on a request that answers late: the
+         * result arrives with a later status reading, which it already polls. */
+        const char *slash = strchr(what, '/');
+        if (slash && slash[1])
+            g_free(about_freenet_control_start(slash + 1));
         about_emit_json(resp, about_freenet_json());
     } else if (g_str_has_prefix(what, "freenet-control")) {
-        char *form = about_request_form(url, method, req_body, req_body_len);
-        about_emit_json(resp, about_freenet_control(form));
-        g_free(form);
+        g_autofree char *form =
+            about_request_form(url, method, req_body, req_body_len);
+        g_autoptr(GHashTable) q = form && *form
+            ? g_uri_parse_params(form, -1, "&", G_URI_PARAMS_WWW_FORM, NULL)
+            : NULL;
+        const char *verb = q ? g_hash_table_lookup(q, "verb") : NULL;
+        about_emit_json(resp, about_freenet_control_start(verb ? verb : ""));
     } else {
         const char *body = "<!doctype html><title>Northstar</title>";
         g_byte_array_append(resp->body, (const guint8 *)body, (guint)strlen(body));
