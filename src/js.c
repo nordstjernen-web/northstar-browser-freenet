@@ -36,6 +36,7 @@
 #include "debuglog.h"
 #include "engine.h"
 #include "ext.h"
+#include "freenet.h"
 #include "html.h"
 #include "idb.h"
 #include "image.h"
@@ -19931,6 +19932,14 @@ ns_window_websocket_ctor(JSContext *ctx, JSValueConst this_val,
     char *target = g_strdup(resolved ? resolved : url_raw);
     JS_FreeCString(ctx, url_raw);
     g_free(resolved);
+
+    if (ns_freenet_is_url(target)) {
+        char *remapped = ns_freenet_to_gateway_ws(target);
+        if (remapped) {
+            g_free(target);
+            target = remapped;
+        }
+    }
 
     if (g_ascii_strncasecmp(target, "http://", 7) == 0) {
         char *remapped = g_strconcat("ws://", target + 7, NULL);
@@ -49021,7 +49030,7 @@ ns_location_target_allowed(const char *s)
     const char *slash = strchr(s, '/');
     if (!colon || (slash && slash < colon)) return TRUE;
     static const char *const allowed[] = {
-        "http:", "https:", "about:", "data:", "mailto:", NULL,
+        "http:", "https:", "about:", "data:", "mailto:", "freenet:", NULL,
     };
     for (int i = 0; allowed[i]; i++)
         if (g_ascii_strncasecmp(s, allowed[i], strlen(allowed[i])) == 0)

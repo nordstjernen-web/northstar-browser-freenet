@@ -10,6 +10,7 @@
 #include "csp.h"
 #include "debuglog.h"
 #include "ext.h"
+#include "freenet.h"
 #include "html.h"
 #include "image.h"
 #include "security.h"
@@ -696,6 +697,13 @@ ns_url_resolve_len(const char *base, const char *href, size_t href_len)
             g_string_free(s, TRUE);
     }
     ns_url_parser_close(parser);
+    if (ns_freenet_is_url(out)) {
+        char *canonical = ns_freenet_canonical_url(out);
+        if (canonical) {
+            g_free(out);
+            out = canonical;
+        }
+    }
     return out;
 }
 
@@ -759,7 +767,7 @@ ns_url_to_ascii(const char *url)
 {
     if (!url || !*url) return NULL;
     if (g_str_has_prefix(url, "data:") || g_str_has_prefix(url, "about:") ||
-        g_str_has_prefix(url, "file:"))
+        g_str_has_prefix(url, "file:") || ns_freenet_is_url(url))
         return g_strdup(url);
     return ns_url_resolve(NULL, url);
 }
@@ -780,7 +788,7 @@ char *
 ns_url_origin_from(const char *url)
 {
     if (!url || !*url) return NULL;
-    if (!ns_url_is_http_or_https(url))
+    if (!ns_url_is_http_or_https(url) && !ns_freenet_is_url(url))
         return NULL;
 
     lxb_url_parser_t *parser = ns_url_parser_open();
@@ -983,7 +991,8 @@ ns_url_parts_new_depth(const char *url, int depth)
             || strcmp(p->protocol, "https:") == 0
             || strcmp(p->protocol, "ws:") == 0
             || strcmp(p->protocol, "wss:") == 0
-            || strcmp(p->protocol, "ftp:") == 0);
+            || strcmp(p->protocol, "ftp:") == 0
+            || strcmp(p->protocol, "freenet:") == 0);
     p->origin = tuple_origin
         ? g_strconcat(p->protocol, "//", p->host, NULL)
         : g_strdup("null");
@@ -2731,8 +2740,30 @@ typedef struct ns_error_info {
 } ns_error_info;
 
 static const ns_error_info *
-classify_error(long status, const char *transport_error, gboolean is_file_url)
+classify_error(long status, const char *transport_error, gboolean is_file_url,
+               gboolean is_freenet_url)
 {
+    static const ns_error_info FREENET_NO_NODE = {
+        "🕸",
+        "No Freenet node is running",
+        "No Freenet node is running",
+        "Northstar reaches Freenet through a node on this machine, and "
+        "nothing answered at the configured gateway address."
+    };
+    static const ns_error_info FREENET_BAD_ADDRESS = {
+        "📝",
+        "That is not a Freenet address",
+        "That is not a Freenet address",
+        "A freenet: address names a contract by its key — 32 to 64 base58 "
+        "characters, as printed when a site is published."
+    };
+    static const ns_error_info FREENET_MISSING = {
+        "🕸",
+        "Contract not found on Freenet",
+        "Contract not found on Freenet",
+        "Your node is running but could not retrieve this contract. It may "
+        "not exist, or no peer holding it has been reached yet."
+    };
     static const ns_error_info NO_NETWORK = {
         "📡",
         "Can't reach the network",
@@ -2867,6 +2898,14 @@ classify_error(long status, const char *transport_error, gboolean is_file_url)
         "The file exists but this account is not allowed to read it."
     };
 
+    if (is_freenet_url) {
+        if (transport_error &&
+            g_strstr_len(transport_error, -1, "contract address"))
+            return &FREENET_BAD_ADDRESS;
+        if (status == 404 || status == 410) return &FREENET_MISSING;
+        if (status <= 0) return &FREENET_NO_NODE;
+    }
+
     if (is_file_url) {
         if (status == 403) return &FILE_DENIED;
         if (transport_error &&
@@ -2925,8 +2964,9 @@ char *
 ns_build_error_page(const char *url, long status, const char *transport_error)
 {
     gboolean is_file_url = url && g_str_has_prefix(url, "file:");
+    gboolean is_freenet_url = ns_freenet_is_url(url);
     const ns_error_info *info = classify_error(status, transport_error,
-                                               is_file_url);
+                                               is_file_url, is_freenet_url);
     const char *safe_url = url && *url ? url : "(no URL)";
     char *esc_url = ns_html_escape_text(safe_url);
     char *esc_title = ns_html_escape_text(info->title);
@@ -3027,7 +3067,23 @@ ns_build_error_page(const char *url, long status, const char *transport_error)
         "<div class=\"tips\">"
         "<strong>What to try:</strong>"
         "<ul>");
-    if (is_file_url) {
+    if (is_freenet_url) {
+        char *esc_gateway = ns_html_escape_text(ns_freenet_gateway());
+        g_string_append(out,
+            "<li>Start a Freenet node on this machine and leave it "
+            "running — see <a href=\"https://freenet.org/\">freenet.org</a>"
+            ".</li>"
+            "<li>Northstar is looking for the node's local gateway at ");
+        g_string_append(out, esc_gateway);
+        g_string_append(out,
+            "; set <code>freenet_gateway</code> in northstar.conf, or the "
+            "<code>NS_FREENET_GATEWAY</code> environment variable, if your "
+            "node listens elsewhere.</li>"
+            "<li>Freenet resolves contracts by searching the network, so a "
+            "freshly started node may need a moment before a reload "
+            "succeeds.</li>");
+        g_free(esc_gateway);
+    } else if (is_file_url) {
         g_string_append(out,
             "<li>Check the path in the address bar for typos.</li>"
             "<li>Confirm the file is still where you expect it.</li>"
@@ -4155,6 +4211,11 @@ static const char k_about_settings_html[] =
 "<label class=\"field\" id=\"custom_wrap\">Custom search URL"
 "<input id=\"search_engine\" type=\"text\" "
 "placeholder=\"https://example.com/?q=%s\"></label>"
+"<label class=\"field\">Freenet node gateway"
+"<input id=\"freenet_gateway\" type=\"text\" "
+"placeholder=\"" NS_FREENET_DEFAULT_GATEWAY "\"></label>"
+"<p class=\"note\">Where freenet: addresses are fetched from. Requires a "
+"Freenet node running on this machine.</p>"
 "</section>\n"
 "<section class=\"card\"><h2>Privacy</h2>"
 "<label class=\"field\">Cookies<select id=\"cookie_policy\">"
@@ -4209,6 +4270,7 @@ static const char k_about_settings_html[] =
 "return r.json();}).then(function(c){"
 "$('home_url').value=c.home_url||'';"
 "$('search_engine').value=c.search_engine||'';buildPick(c.search_engine||'');"
+"$('freenet_gateway').value=c.freenet_gateway||'';"
 "$('cookie_policy').value=''+(c.cookie_policy||0);"
 "['do_not_track','global_privacy_control','strip_tracking_params',"
 "'https_first','images_enabled','local_storage_enabled',"
@@ -4219,6 +4281,7 @@ static const char k_about_settings_html[] =
 "fetch('about:settings-save',{method:'POST',headers:{'Content-Type':"
 "'application/x-www-form-urlencoded'},body:enc({"
 "home_url:$('home_url').value,search_engine:$('search_engine').value,"
+"freenet_gateway:$('freenet_gateway').value,"
 "cookie_policy:$('cookie_policy').value,do_not_track:bv('do_not_track'),"
 "global_privacy_control:bv('global_privacy_control'),"
 "strip_tracking_params:bv('strip_tracking_params'),"
@@ -4271,13 +4334,15 @@ about_settings_json(void)
     const ns_config *c = ns_config_get();
     char *home = about_json_escape(c && c->home_url ? c->home_url : "");
     char *eng = about_json_escape(c && c->search_engine ? c->search_engine : "");
+    char *fng = about_json_escape(ns_freenet_gateway());
     char *json = g_strdup_printf(
-        "{\"home_url\":\"%s\",\"search_engine\":\"%s\",\"cookie_policy\":%d,"
+        "{\"home_url\":\"%s\",\"search_engine\":\"%s\","
+        "\"freenet_gateway\":\"%s\",\"cookie_policy\":%d,"
         "\"do_not_track\":%s,\"global_privacy_control\":%s,"
         "\"strip_tracking_params\":%s,\"https_first\":%s,"
         "\"images_enabled\":%s,"
         "\"local_storage_enabled\":%s,\"cache_enabled\":%s}",
-        home, eng, c ? (int)c->cookie_policy : 1,
+        home, eng, fng, c ? (int)c->cookie_policy : 1,
         (c && c->do_not_track) ? "true" : "false",
         (c && c->global_privacy_control) ? "true" : "false",
         (c && c->strip_tracking_params) ? "true" : "false",
@@ -4287,6 +4352,7 @@ about_settings_json(void)
         (c && c->cache_enabled) ? "true" : "false");
     g_free(home);
     g_free(eng);
+    g_free(fng);
     return json;
 }
 
@@ -4305,6 +4371,10 @@ about_settings_save(const char *form)
     }
     if ((v = g_hash_table_lookup(q, "search_engine"))) {
         g_free(c->search_engine); c->search_engine = g_strdup(v);
+    }
+    if ((v = g_hash_table_lookup(q, "freenet_gateway"))) {
+        g_free(c->freenet_gateway);
+        c->freenet_gateway = g_strdup(*v ? v : NS_FREENET_DEFAULT_GATEWAY);
     }
     if ((v = g_hash_table_lookup(q, "cookie_policy")))
         c->cookie_policy = (ns_cookie_policy)atoi(v);
@@ -5331,6 +5401,21 @@ ns_fetch_sync(const char *url, const char *top_url, const char *method,
     if (max_redirs < 0)                       max_redirs = 0;
     if (max_redirs > (long)NS_MAX_REDIRECTS)  max_redirs = (long)NS_MAX_REDIRECTS;
 
+    g_autofree char *freenet_url = NULL;
+    g_autofree char *gateway_url = NULL;
+    if (ns_freenet_is_url(url)) {
+        gateway_url = ns_freenet_to_gateway(url);
+        if (!gateway_url) {
+            ns_response *bad = g_new0(ns_response, 1);
+            bad->body = g_byte_array_new();
+            bad->final_url = g_strdup(url);
+            bad->error = g_strdup("not a valid Freenet contract address");
+            return bad;
+        }
+        freenet_url = g_strdup(url);
+        url = gateway_url;
+    }
+
     char *cur_url = g_strdup(url);
     char *cur_top = g_strdup(top_url);
     char *cur_method = g_strdup(method && *method ? method : "GET");
@@ -5398,6 +5483,13 @@ ns_fetch_sync(const char *url, const char *top_url, const char *method,
         }
     }
     if (resp) resp->redirect_count = hops;
+    if (resp && freenet_url) {
+        char *localized = ns_freenet_from_gateway(resp->final_url);
+        g_free(resp->final_url);
+        resp->final_url = localized ? localized : g_strdup(freenet_url);
+        if (resp->security == NS_SEC_PLAIN)
+            resp->security = NS_SEC_FREENET;
+    }
     g_free(cur_url);
     g_free(cur_top);
     g_free(cur_method);

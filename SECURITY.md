@@ -258,6 +258,14 @@ cap, and `CURLOPT_NOSIGNAL`. HSTS state is loaded and persisted via
   granted to web pages. Packaged-resource paths are canonicalized beneath
   the extension root before loading, and extension storage is separated by
   extension identity.
+- `freenet://<contract-key>/` is a tuple origin whose host is the contract
+  key, so each Freenet contract is isolated from every other and from the
+  web, even though all of them are transferred over the same loopback
+  connection to the local node. Reaching the node's gateway through
+  `http://127.0.0.1:7509/` instead would put every contract in one origin.
+  The browser does not verify contract signatures or hashes — that is the
+  node's job, and the configured `freenet_gateway` is trusted to the
+  extent the node is. See [docs/freenet.md](docs/freenet.md).
 
 ### On-disk state
 

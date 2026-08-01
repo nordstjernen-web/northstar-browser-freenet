@@ -64,6 +64,11 @@ libavif when available, and SVG in the engine).
 - **Networking** over HTTP/2 with libcurl — HTTP/3 when the linked
   libcurl provides it — HSTS, CSP, subresource-integrity (SRI) checks,
   partitioned cookies.
+- **Freenet** — `freenet://<contract-key>/` is a URL scheme the browser
+  speaks natively, served by a [Freenet](https://freenet.org/) node
+  running on the machine. Each contract key is its own origin, so
+  contracts are isolated from each other and from the web. See
+  [docs/freenet.md](docs/freenet.md).
 - **Safe browsing** — before a top-level navigation is fetched, its host
   is checked against a local SHA-256 blocklist. The check runs entirely
   on-device.

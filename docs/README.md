@@ -14,6 +14,9 @@ libcurl, carrying no upstream browser engine.
 - **[preloading.md](preloading.md)** — the speculative preload scan, the
   request key that identifies a fetch, and the four layers that keep a
   subresource from being fetched twice.
+- **[freenet.md](freenet.md)** — the `freenet:` URL scheme, how it is
+  mapped onto a local Freenet node, the per-contract origin model, and the
+  `freenet_gateway` setting.
 - **[compliance.md](compliance.md)** — where the engine stands against the
   HTML and CSS specifications, how to reproduce the web-platform-tests
   scores, and the known structural gaps.
