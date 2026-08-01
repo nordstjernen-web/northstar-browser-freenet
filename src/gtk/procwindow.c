@@ -16,6 +16,7 @@
 #include "cache.h"
 #include "config.h"
 #include "css.h"
+#include "freenet.h"
 #include "history.h"
 #include "net.h"
 #include "security.h"
@@ -255,6 +256,13 @@ normalize_url(const char *input)
     char *trimmed = g_strstrip(g_strdup(input ? input : ""));
     if (!*trimmed)
         return trimmed;
+    if (ns_freenet_is_url(trimmed)) {
+        char *canonical = ns_freenet_canonical_url(trimmed);
+        if (!canonical)
+            return trimmed;
+        g_free(trimmed);
+        return canonical;
+    }
     if (g_str_has_prefix(trimmed, "about:") ||
         g_str_has_prefix(trimmed, "file:") ||
         g_str_has_prefix(trimmed, "data:") || strstr(trimmed, "://"))
@@ -263,6 +271,11 @@ normalize_url(const char *input)
     if (local) {
         g_free(trimmed);
         return local;
+    }
+    if (ns_freenet_key_is_valid(trimmed)) {
+        char *out = g_strconcat("freenet://", trimmed, "/", NULL);
+        g_free(trimmed);
+        return out;
     }
     if (ns_address_is_search(trimmed)) {
         char *out = ns_search_url_for(trimmed);
@@ -337,6 +350,10 @@ update_security_indicator(ProcWindow *pw, NsProcView *v)
     case NS_SEC_PLAIN:
         icon_name = "channel-insecure-symbolic";
         label = ns_i18n("Not secure — the connection is not encrypted");
+        break;
+    case NS_SEC_FREENET:
+        icon_name = "security-high-symbolic";
+        label = ns_i18n("Freenet — served by a node on this machine");
         break;
     default:
         break;
@@ -2005,6 +2022,7 @@ session_url_recoverable(const char *u)
     return u && (g_str_has_prefix(u, "http://") ||
                  g_str_has_prefix(u, "https://") ||
                  g_str_has_prefix(u, "ftp://") ||
+                 g_str_has_prefix(u, "freenet://") ||
                  g_str_has_prefix(u, "file://"));
 }
 

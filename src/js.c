@@ -36,6 +36,7 @@
 #include "debuglog.h"
 #include "engine.h"
 #include "ext.h"
+#include "freenet.h"
 #include "html.h"
 #include "idb.h"
 #include "image.h"
@@ -19932,6 +19933,16 @@ ns_window_websocket_ctor(JSContext *ctx, JSValueConst this_val,
     JS_FreeCString(ctx, url_raw);
     g_free(resolved);
 
+    g_autofree char *csp_target = ns_freenet_is_url(target)
+        ? g_strdup(target) : NULL;
+    if (csp_target) {
+        char *remapped = ns_freenet_to_gateway_ws(target);
+        if (remapped) {
+            g_free(target);
+            target = remapped;
+        }
+    }
+
     if (g_ascii_strncasecmp(target, "http://", 7) == 0) {
         char *remapped = g_strconcat("ws://", target + 7, NULL);
         g_free(target);
@@ -19973,7 +19984,8 @@ ns_window_websocket_ctor(JSContext *ctx, JSValueConst this_val,
     }
 
     if (js && js->csp &&
-        !ns_csp_allows(js->csp, NS_CSP_CONNECT, target, js->current_url)) {
+        !ns_csp_allows(js->csp, NS_CSP_CONNECT,
+                       csp_target ? csp_target : target, js->current_url)) {
         g_free(target);
         return JS_ThrowTypeError(ctx,
             "WebSocket: blocked by Content-Security-Policy connect-src");
@@ -20202,6 +20214,16 @@ ns_window_eventsource_ctor(JSContext *ctx, JSValueConst this_val,
     JS_FreeCString(ctx, url_raw);
     g_free(resolved);
 
+    g_autofree char *csp_target = ns_freenet_is_url(target)
+        ? g_strdup(target) : NULL;
+    if (csp_target) {
+        char *remapped = ns_freenet_to_gateway(target);
+        if (remapped) {
+            g_free(target);
+            target = remapped;
+        }
+    }
+
     if (g_ascii_strncasecmp(target, "http://", 7) != 0 &&
         g_ascii_strncasecmp(target, "https://", 8) != 0) {
         g_free(target);
@@ -20215,7 +20237,8 @@ ns_window_eventsource_ctor(JSContext *ctx, JSValueConst this_val,
             "EventSource: mixed content (http:// not allowed from https://)");
     }
     if (js && js->csp &&
-        !ns_csp_allows(js->csp, NS_CSP_CONNECT, target, js->current_url)) {
+        !ns_csp_allows(js->csp, NS_CSP_CONNECT,
+                       csp_target ? csp_target : target, js->current_url)) {
         g_free(target);
         return JS_ThrowTypeError(ctx,
             "EventSource: blocked by Content-Security-Policy connect-src");
@@ -49021,7 +49044,7 @@ ns_location_target_allowed(const char *s)
     const char *slash = strchr(s, '/');
     if (!colon || (slash && slash < colon)) return TRUE;
     static const char *const allowed[] = {
-        "http:", "https:", "about:", "data:", "mailto:", NULL,
+        "http:", "https:", "about:", "data:", "mailto:", "freenet:", NULL,
     };
     for (int i = 0; allowed[i]; i++)
         if (g_ascii_strncasecmp(s, allowed[i], strlen(allowed[i])) == 0)

@@ -69,7 +69,8 @@ typedef enum {
     NS_SEC_NONE = 0,
     NS_SEC_SECURE,
     NS_SEC_INVALID,
-    NS_SEC_PLAIN
+    NS_SEC_PLAIN,
+    NS_SEC_FREENET
 } ns_security;
 
 typedef struct ns_response {

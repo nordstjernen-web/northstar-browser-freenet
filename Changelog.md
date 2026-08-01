@@ -4,6 +4,22 @@ Significant changes in each release:
 
 1.0.7:
 ======
+* Freenet is a URL scheme the browser speaks. `freenet://<contract-key>/`
+  addresses are typed, linked, bookmarked and restored like any other, and
+  the request is served by a Freenet node running on the machine --
+  `freenet_gateway` in the config, `NS_FREENET_GATEWAY` in the
+  environment, `127.0.0.1:7509` by default. Only the transfer itself is
+  addressed to the node: the document, its scripts and the address bar
+  stay on the `freenet:` URL, so each contract key is a separate origin
+  and one contract can no more read another's storage or responses than
+  two websites can. Browsing the node's gateway directly gives every
+  contract on it the same origin. Links written the way the Freenet
+  documentation asks -- absolute against `/v1/contract/web/<key>/` --
+  collapse to the address they name, and any other `v1/` path reaches the
+  node, so a contract's own JavaScript opens the client API at
+  `/v1/contract/command` as it would there. A failure says whether the
+  address is not a contract key, no node answered, or the node could not
+  find the contract.
 * `--version` prints the version and exits. The flag was never
   recognised, so it fell through to an ordinary startup: the browser
   armed the watchdog, opened a window and left the caller with exit 255

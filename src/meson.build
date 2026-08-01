@@ -52,6 +52,7 @@ northstar_engine_sources = files(
   'eventsource.c',
   'ext.c',
   'forms.c',
+  'freenet.c',
   'camera.c',
   'mic.c',
   'font.c',
