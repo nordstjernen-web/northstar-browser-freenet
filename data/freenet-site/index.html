@@ -48,6 +48,8 @@
     margin: 0 auto 14px; border-collapse: collapse; max-width: 660px;
     background: #0a0a1a; border: 4px ridge #c0c0c0;
   }
+  /* the screenshot earns more room than the text boxes */
+  table.shot { max-width: 860px; }
   table.box td { padding: 12px 16px; color: #ffffff; text-align: left;
                  font-size: 14px; line-height: 1.5; }
   .label { color: #00ff00; font-weight: bold; white-space: nowrap;
@@ -70,6 +72,8 @@
   ul.links { list-style: none; padding: 0; margin: 6px 0 0; }
   ul.links li { margin: 5px 0; font-size: 15px; }
   .small { color: #aab; font-size: 12px; }
+  .ingress { max-width: 620px; margin: 12px auto 0; color: #ffffcc;
+             font-size: 15.5px; line-height: 1.6; }
   .ring { max-width: 660px; margin: 0 auto; color: #fff; font-size: 13px; }
   blink { animation: b 1s steps(2) infinite; }
   @keyframes b { 50% { opacity: 0; } }
@@ -82,22 +86,27 @@
 <marquee scrollamount="4">*** WELCOME TO NORTHSTAR ON FREENET *** no servers were harmed in the making of this page *** you are surfing the deep web, 1997 style ***</marquee>
 
 <h1>Northstar on Freenet</h1>
-<h2>Screen Shot!!</h2>
-<table class="box"><tr><td style="text-align:center">
+<p><b>This page is NOT on the web!!</b><br>
+<span class="small">Your Freenet node fetched it from the network.</span></p>
+
+<p class="ingress">Northstar is a web browser written from scratch in
+<b>C</b>, with no engine borrowed from anyone else. It browses the web, and
+it browses <b>Freenet</b> &mdash; where pages like this one live on the
+network itself, served by no server at all.</p>
+
+<h2 style="margin-top:20px">Screen Shot!!</h2>
+<table class="box shot"><tr><td style="text-align:center">
   <!-- width and height both given: with max-width constraining the box,
        height:auto is not recomputed from the image's own ratio here, and
        the picture comes out square. -->
   <img src="screenshot.png" alt="Nordstjernen browser"
-       width="520" height="390"
+       width="800" height="600"
        style="border:3px ridge #c0c0c0">
   <p class="small" style="color:#ccd;margin:6px 0 0">Inside the contract
   &mdash; nothing here is fetched off-network.</p>
 </td></tr></table>
 
 <div class="rule"></div>
-
-<p><b>This page is NOT on the web!!</b><br>
-<span class="small">Your Freenet node fetched it from the network.</span></p>
 
 <div class="construction"><span>&#9888; THIS SITE IS UNDER CONSTRUCTION &#9888;</span></div>
 
