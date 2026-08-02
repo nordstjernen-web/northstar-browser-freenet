@@ -34545,6 +34545,7 @@ ns_element_set_scrollTop(JSContext *ctx, JSValueConst this_val, JSValueConst val
     if (v > max) v = max;
     if (v == b->scroll_y) return JS_UNDEFINED;
     b->scroll_y = v;
+    if (b->dom) ((ns_node *)b->dom)->scroll_keep_y = v;
     ns_js *js = js_from_ctx(ctx);
     if (js) {
         if (js->repaint_cb) js->repaint_cb(js->repaint_user_data);
@@ -34577,6 +34578,7 @@ ns_element_set_scrollLeft(JSContext *ctx, JSValueConst this_val, JSValueConst va
     if (v > max) v = max;
     if (v == b->scroll_x) return JS_UNDEFINED;
     b->scroll_x = v;
+    if (b->dom) ((ns_node *)b->dom)->scroll_keep_x = v;
     ns_js *js = js_from_ctx(ctx);
     if (js) {
         if (js->repaint_cb) js->repaint_cb(js->repaint_user_data);

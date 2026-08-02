@@ -4,6 +4,13 @@ Significant changes in each release:
 
 1.0.7-freenet:
 ==============
+* A scrolled element stays where it was put. The offset lived on the
+  layout box, which is rebuilt on every relayout, so a page that scrolled
+  a pane and then touched the DOM -- a chat log receiving a message, most
+  of all -- was silently returned to the top while `scrollTop` still read
+  the value that had been set. The offset now belongs to the element and
+  is restored to each new box, so wheel, scrollbar and `scrollTop` all
+  survive a relayout.
 * A full-height app shell keeps its shape. A column that is a flex item of
   a row is stretched to a height as definite as one written down, but the
   column read only its own `height` property when dividing that height

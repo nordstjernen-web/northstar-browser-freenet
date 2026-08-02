@@ -107,6 +107,11 @@ struct ns_node {
     int src_line;
     int src_col;
 
+    /* Where this element is scrolled to. The offset belongs to the element,
+       not to the box that happens to represent it in one layout, so it is
+       kept here and restored whenever a new box is built for the node. */
+    double scroll_keep_x, scroll_keep_y;
+
     struct ns_node *tpl_content;
 };
 

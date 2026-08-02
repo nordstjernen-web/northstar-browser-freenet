@@ -11146,6 +11146,10 @@ flex_done: ;
         box->scrolls = FALSE;
         box->scroll_max_y = 0;
     }
+    if (box->scrolls && box->dom) {
+        box->scroll_y = CLAMP(box->dom->scroll_keep_y, 0, box->scroll_max_y);
+        box->scroll_x = CLAMP(box->dom->scroll_keep_x, 0, box->scroll_max_x);
+    }
 }
 
 typedef struct {

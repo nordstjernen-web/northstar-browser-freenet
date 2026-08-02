@@ -1734,13 +1734,21 @@ ns_browser_scroll_at(ns_browser *browser, int x, int y, int dx, int dy)
         double ny = box->scroll_y + dy;
         if (ny < 0) ny = 0;
         if (ny > box->scroll_max_y) ny = box->scroll_max_y;
-        if (ny != box->scroll_y) { box->scroll_y = ny; consumed = 1; }
+        if (ny != box->scroll_y) {
+            box->scroll_y = ny;
+            if (box->dom) ((ns_node *)box->dom)->scroll_keep_y = ny;
+            consumed = 1;
+        }
     }
     if (dx != 0 && box->scroll_max_x > 0) {
         double nx = box->scroll_x + dx;
         if (nx < 0) nx = 0;
         if (nx > box->scroll_max_x) nx = box->scroll_max_x;
-        if (nx != box->scroll_x) { box->scroll_x = nx; consumed = 1; }
+        if (nx != box->scroll_x) {
+            box->scroll_x = nx;
+            if (box->dom) ((ns_node *)box->dom)->scroll_keep_x = nx;
+            consumed = 1;
+        }
     }
 
     if (consumed && browser->js && box->dom)
@@ -1809,6 +1817,7 @@ ns_browser_scrollbar_press(ns_browser *browser, int x, int y)
         if (ns < 0) ns = 0;
         if (ns > box->scroll_max_y) ns = box->scroll_max_y;
         box->scroll_y = ns;
+        if (box->dom) ((ns_node *)box->dom)->scroll_keep_y = ns;
         if (box->dom && browser->js)
             ns_js_dispatch_event(browser->js, box->dom, "scroll", NULL);
     }
@@ -1844,6 +1853,7 @@ ns_browser_scrollbar_drag(ns_browser *browser, int x, int y)
     if (ns > box->scroll_max_y) ns = box->scroll_max_y;
     if (ns == box->scroll_y) return 0;
     box->scroll_y = ns;
+    if (box->dom) ((ns_node *)box->dom)->scroll_keep_y = ns;
     if (box->dom && browser->js)
         ns_js_dispatch_event(browser->js, box->dom, "scroll", NULL);
     return 1;
