@@ -11,6 +11,16 @@ Significant changes in each release:
   the value that had been set. The offset now belongs to the element and
   is restored to each new box, so wheel, scrollbar and `scrollTop` all
   survive a relayout.
+* Everything scrolled into view is painted. Culling compares a box's own
+  layout coordinates against the visible window, and scrolling moves the
+  content under the clip without moving those coordinates, so anything
+  more than the cull margin past the container's unscrolled top was
+  discarded as off-screen: a scrolled pane showed its first row and then
+  nothing. The window now moves with the scroll. With the offset itself
+  no longer surviving a relayout, these two are why River showed an empty
+  chat area and burned a core -- the pane was painted at the top while
+  the app believed it was at the bottom, so the sentinel that asks for
+  older messages never stopped asking.
 * A full-height app shell keeps its shape. A column that is a flex item of
   a row is stretched to a height as definite as one written down, but the
   column read only its own `height` property when dividing that height

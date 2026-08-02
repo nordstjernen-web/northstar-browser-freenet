@@ -5891,6 +5891,7 @@ paint_walk(cairo_t *cr, const ns_box *b, const char *highlight)
                          strcmp(b->dom->name, "body") == 0));
     gboolean clip_overflow = !is_root &&
                              (overflow_kw_clips(ovx) || overflow_kw_clips(ovy));
+    double cull_shift_y = 0;
     if (clip_overflow &&
         (b->kind == NS_BOX_BLOCK || b->kind == NS_BOX_TABLE_CAPTION ||
          b->kind == NS_BOX_TABLE_CELL)) {
@@ -5941,9 +5942,18 @@ paint_walk(cairo_t *cr, const ns_box *b, const char *highlight)
                                   : "",
                            px, py, pw, ph, ex0, ey0, ex1, ey1);
             }
+            /* Scrolling moves the content under the clip, so the window worth
+             * painting moves with it. The cull test reads a box's own layout
+             * coordinates, which the translate does not touch — leave the
+             * window where it was and everything scrolled into view past the
+             * margin is discarded as off-screen. */
             if ((b->scroll_x != 0 || b->scroll_y != 0) &&
-                !isnan(b->scroll_x) && !isnan(b->scroll_y))
+                !isnan(b->scroll_x) && !isnan(b->scroll_y)) {
                 cairo_translate(cr, -b->scroll_x, -b->scroll_y);
+                cull_shift_y = b->scroll_y;
+                g_paint_clip_y0 += cull_shift_y;
+                g_paint_clip_y1 += cull_shift_y;
+            }
             if (g_paint_collect_stats) g_paint_stats.overflow_clips++;
         } else {
             clip_overflow = FALSE;
@@ -6106,7 +6116,13 @@ paint_walk(cairo_t *cr, const ns_box *b, const char *highlight)
             }
         }
     }
-    if (clip_overflow) cairo_restore(cr);
+    if (clip_overflow) {
+        if (cull_shift_y != 0) {
+            g_paint_clip_y0 -= cull_shift_y;
+            g_paint_clip_y1 -= cull_shift_y;
+        }
+        cairo_restore(cr);
+    }
     if (entries != entries_buf) g_free(entries);
 
     if (has_path_clip) cairo_restore(cr);
