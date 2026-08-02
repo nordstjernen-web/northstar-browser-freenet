@@ -25103,10 +25103,71 @@ ns_event_define_cancel_bubble(JSContext *ctx, JSValueConst ev)
                              ns_event_get_src_element, NULL);
 }
 
+/* An event the engine dispatches carries the interface its type is defined
+ * with, so `instanceof MouseEvent` answers for a real click what it answers
+ * for a synthesised one. Code that asks before reading clientX -- a typed
+ * binding downcasting the handler argument, most of all -- otherwise sees a
+ * bare object and discards the event. */
+static const char *
+ns_event_interface_for_type(const char *type)
+{
+    if (g_str_has_prefix(type, "pointer") ||
+        g_str_has_suffix(type, "pointercapture")) return "PointerEvent";
+    if (g_str_has_prefix(type, "drag") ||
+        strcmp(type, "drop") == 0)               return "DragEvent";
+    if (strcmp(type, "wheel") == 0)              return "WheelEvent";
+    if (g_str_has_prefix(type, "mouse")  ||
+        strcmp(type, "click") == 0    ||
+        strcmp(type, "auxclick") == 0 ||
+        strcmp(type, "dblclick") == 0 ||
+        strcmp(type, "contextmenu") == 0)        return "MouseEvent";
+    if (g_str_has_prefix(type, "key"))           return "KeyboardEvent";
+    if (g_str_has_prefix(type, "touch"))         return "TouchEvent";
+    if (g_str_has_prefix(type, "composition"))   return "CompositionEvent";
+    if (g_str_has_prefix(type, "animation"))     return "AnimationEvent";
+    if (g_str_has_prefix(type, "transition"))    return "TransitionEvent";
+    if (strcmp(type, "focus") == 0    || strcmp(type, "blur") == 0 ||
+        strcmp(type, "focusin") == 0  || strcmp(type, "focusout") == 0)
+        return "FocusEvent";
+    if (strcmp(type, "input") == 0 || strcmp(type, "beforeinput") == 0)
+        return "InputEvent";
+    if (strcmp(type, "submit") == 0)             return "SubmitEvent";
+    if (strcmp(type, "message") == 0)            return "MessageEvent";
+    if (strcmp(type, "storage") == 0)            return "StorageEvent";
+    if (strcmp(type, "hashchange") == 0)         return "HashChangeEvent";
+    if (strcmp(type, "popstate") == 0)           return "PopStateEvent";
+    if (g_str_has_prefix(type, "cut")   || g_str_has_prefix(type, "copy") ||
+        g_str_has_prefix(type, "paste"))         return "ClipboardEvent";
+    if (strcmp(type, "resize") == 0 || strcmp(type, "scroll") == 0 ||
+        strcmp(type, "select") == 0)             return "UIEvent";
+    return "Event";
+}
+
+static void
+ns_event_apply_interface_proto(JSContext *ctx, JSValueConst event,
+                               const char *type)
+{
+    JSValue global = JS_GetGlobalObject(ctx);
+    const char *iface = ns_event_interface_for_type(type);
+    JSValue ctor = JS_GetPropertyStr(ctx, global, iface);
+    if (!JS_IsObject(ctor)) {
+        JS_FreeValue(ctx, ctor);
+        ctor = JS_GetPropertyStr(ctx, global, "Event");
+    }
+    JS_FreeValue(ctx, global);
+    if (JS_IsObject(ctor)) {
+        JSValue proto = JS_GetPropertyStr(ctx, ctor, "prototype");
+        if (JS_IsObject(proto)) JS_SetPrototype(ctx, event, proto);
+        JS_FreeValue(ctx, proto);
+    }
+    JS_FreeValue(ctx, ctor);
+}
+
 static JSValue
 ns_make_event(JSContext *ctx, const char *type, const ns_node *target)
 {
     JSValue event = JS_NewObject(ctx);
+    ns_event_apply_interface_proto(ctx, event, type);
     JS_SetPropertyStr(ctx, event, "type", JS_NewString(ctx, type));
     JS_SetPropertyStr(ctx, event, "target", ns_make_element(ctx, target));
     JS_SetPropertyStr(ctx, event, "defaultPrevented", JS_FALSE);

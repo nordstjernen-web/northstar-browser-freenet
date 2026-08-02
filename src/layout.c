@@ -8189,12 +8189,20 @@ layout_flex_row(ns_box *box, double cw,
         }
     }
     if (min_cross > explicit_cross) explicit_cross = min_cross;
+    /* An out-of-flow box held between top and bottom has a height its content
+     * cannot argue with, so the cross size is definite and the line takes it.
+     * Leaving it indefinite lets one tall item set the line's cross size, and
+     * stretch then hands that height to every sibling — a full-height app
+     * shell grows to the length of its scrolling pane and carries whatever
+     * sits below it off the bottom of the screen. */
     if (explicit_cross <= 0 && box->style &&
         style_is_absolute_or_fixed(box->style) &&
         box->content_height > 0 &&
         (hv_box || (box->style->values[NS_CSS_TOP] &&
-                    box->style->values[NS_CSS_BOTTOM])))
+                    box->style->values[NS_CSS_BOTTOM]))) {
         explicit_cross = box->content_height;
+        definite_cross = TRUE;
+    }
     if (explicit_cross <= 0 && box->definite_height > 0)
         explicit_cross = box->definite_height;
     if (!definite_cross && explicit_cross > 0 && box->definite_height > 0)
@@ -8846,6 +8854,14 @@ layout_flex_column(ns_box *box, double cw,
             arv->u.length.v > 0 && cw > 0)
             explicit_h = cw / arv->u.length.v;
     }
+    /* A column stretched to its row's cross size has a height as definite as
+     * one written down, and its own items divide that height. Reading only the
+     * height property leaves the free space unknown, so a flex:1 item falls
+     * back to its content and a scrolling pane grows without bound, carrying
+     * everything after it past the bottom of the container. The row form
+     * already trusts this field for the same reason. */
+    if (explicit_h < 0 && box->definite_height > 0)
+        explicit_h = box->definite_height;
     if (explicit_h > 0) box->definite_height = explicit_h;
     double row_gap = flex_gap_row_of(box->style,
                                      explicit_h > 0 ? explicit_h : 0);

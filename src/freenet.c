@@ -527,6 +527,74 @@ ns_freenet_known_contract_for_host(const char *host)
     return found;
 }
 
+/* One loopback address is every loopback address: localhost, 127.anything and
+ * ::1 all reach the node listening on 127.0.0.1. Comparing the authority as
+ * written would let ws://localhost:7509 past a gate that stops
+ * ws://127.0.0.1:7509, and would fail to recognise the node's own links --
+ * which name localhost -- as naming the node. */
+static gboolean
+ns_freenet_host_is_loopback(const char *host, size_t len)
+{
+    if (len == 0) return FALSE;
+    if (host[len - 1] == '.') len--;
+    if (len == 9 && g_ascii_strncasecmp(host, "localhost", 9) == 0) return TRUE;
+    if (len == 3 && strncmp(host, "::1", 3) == 0) return TRUE;
+    if (len == 5 && strncmp(host, "[::1]", 5) == 0) return TRUE;
+    if (len > 4 && strncmp(host, "127.", 4) == 0) {
+        for (size_t i = 4; i < len; i++)
+            if (!g_ascii_isdigit(host[i]) && host[i] != '.') return FALSE;
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static void
+ns_freenet_split_authority(const char *authority, size_t len,
+                           const char **host, size_t *host_len,
+                           const char **port, size_t *port_len)
+{
+    size_t colon = len;
+    if (len && authority[0] == '[') {
+        const char *close = memchr(authority, ']', len);
+        colon = close && (size_t)(close - authority) + 1 < len &&
+                close[1] == ':' ? (size_t)(close - authority) + 1 : len;
+    } else {
+        for (size_t i = 0; i < len; i++)
+            if (authority[i] == ':') { colon = i; break; }
+    }
+    *host = authority;
+    *host_len = colon;
+    *port = colon < len ? authority + colon + 1 : NULL;
+    *port_len = colon < len ? len - colon - 1 : 0;
+}
+
+static gboolean
+ns_freenet_authority_is_gateway(const char *authority, size_t len)
+{
+    g_autofree char *base = ns_freenet_gateway_base(FALSE);
+    if (!base) return FALSE;
+    const char *gateway = strstr(base, "://");
+    gateway = gateway ? gateway + 3 : base;
+    size_t gateway_len = strlen(gateway);
+
+    const char *host = NULL, *port = NULL;
+    const char *ghost = NULL, *gport = NULL;
+    size_t host_len = 0, port_len = 0, ghost_len = 0, gport_len = 0;
+    ns_freenet_split_authority(authority, len, &host, &host_len,
+                               &port, &port_len);
+    ns_freenet_split_authority(gateway, gateway_len, &ghost, &ghost_len,
+                               &gport, &gport_len);
+
+    if (port_len != gport_len ||
+        (port_len && strncmp(port, gport, port_len) != 0))
+        return FALSE;
+    if (host_len == ghost_len &&
+        g_ascii_strncasecmp(host, ghost, host_len) == 0)
+        return TRUE;
+    return ns_freenet_host_is_loopback(host, host_len) &&
+           ns_freenet_host_is_loopback(ghost, ghost_len);
+}
+
 /* The node's client API answers anything that can reach the port: it has no
  * origin check and no authentication on loopback, and a WebSocket is not
  * bound by the same-origin policy. So an ordinary web page can open one and
@@ -549,15 +617,8 @@ ns_freenet_is_node_endpoint(const char *url)
     }
     if (!authority) return FALSE;
 
-    g_autofree char *base = ns_freenet_gateway_base(FALSE);
-    if (!base) return FALSE;
-    const char *gateway = strstr(base, "://");
-    gateway = gateway ? gateway + 3 : base;
-
-    size_t host_len = strcspn(authority, "/?#");
-    size_t gateway_len = strlen(gateway);
-    return host_len == gateway_len &&
-           g_ascii_strncasecmp(authority, gateway, host_len) == 0;
+    return ns_freenet_authority_is_gateway(authority,
+                                           strcspn(authority, "/?#"));
 }
 
 char *
@@ -654,11 +715,14 @@ ns_freenet_from_gateway(const char *url)
 {
     if (!url) return NULL;
 
-    g_autofree char *base = ns_freenet_gateway_base(FALSE);
-    if (!base) return NULL;
-    if (!g_str_has_prefix(url, base) || url[strlen(base)] != '/') return NULL;
+    const char *authority = strstr(url, "://");
+    if (!authority) return NULL;
+    authority += 3;
+    size_t authority_len = strcspn(authority, "/?#");
+    if (!ns_freenet_authority_is_gateway(authority, authority_len)) return NULL;
+    if (authority[authority_len] != '/') return NULL;
 
-    const char *p = ns_freenet_after_web_prefix(url + strlen(base) + 1);
+    const char *p = ns_freenet_after_web_prefix(authority + authority_len + 1);
     if (!p) return NULL;
     const char *end = p + strcspn(p, "/?#");
     if (end == p) return NULL;

@@ -4,6 +4,30 @@ Significant changes in each release:
 
 1.0.7-freenet:
 ==============
+* A full-height app shell keeps its shape. A column that is a flex item of
+  a row is stretched to a height as definite as one written down, but the
+  column read only its own `height` property when dividing that height
+  among its items, so a `flex: 1` item fell back to its content size. A
+  scrolling pane then grew to the length of everything in it and carried
+  the composer below it off the bottom of the window -- in River, a chat
+  log 17650px tall and no message box in sight. The column now takes the
+  height it was stretched to, and an out-of-flow box held between `top`
+  and `bottom` counts as a definite cross size rather than letting one
+  tall item set the line. The pane is bounded and scrolls; what follows
+  it stays on screen.
+* An event the engine dispatches carries the interface its type is
+  defined with. Every one was a bare object before -- a real click was
+  not `instanceof MouseEvent`, nor even `instanceof Event`, though a
+  synthesised one was -- so a library that checks the type of the event
+  it is handed discarded every real interaction. Mouse, pointer,
+  keyboard, focus, input, touch, wheel, drag, clipboard, composition,
+  animation and transition events are all typed.
+* `localhost` and `127.0.0.1` name the same node. The gateway comparison
+  matched the configured address literally, so a link to the node's own
+  address in the other spelling was not recognised as naming a contract
+  -- and the guard that keeps ordinary web pages off the node's client
+  API, which has no authentication on loopback, could be walked around by
+  asking for `localhost` when the gateway was written `127.0.0.1`.
 * The Windows bundle ships a Freenet node. `freenet.exe` sits at the root
   of the zip beside the launcher, and the browser looks there -- next to
   itself and one level above -- before the install locations, so an
