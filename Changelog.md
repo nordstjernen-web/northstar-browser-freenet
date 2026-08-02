@@ -4,6 +4,9 @@ Significant changes in each release:
 
 1.0.7-freenet:
 ==============
+* The start page links to the node's own dashboard, beside the console.
+  The address is the configured gateway rather than the default written
+  into the link, so it follows `freenet_gateway` wherever it points.
 * A scrolled element stays where it was put. The offset lived on the
   layout box, which is rebuilt on every relayout, so a page that scrolled
   a pane and then touched the DOM -- a chat log receiving a message, most

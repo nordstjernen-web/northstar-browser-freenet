@@ -4125,6 +4125,7 @@ static const char k_about_start_template[] =
     "<p class=\"links\">"
     "<a href=\"" NS_FREENET_START_URL "\">Freenet</a>"
     "<a href=\"about:freenet\">Node</a>"
+    "<a href=\"__ND_NODE_DASHBOARD__\">Dashboard</a>"
     "<a href=\"about:history\">History</a>"
     "<a href=\"about:license\">License</a>"
     "<a href=\"https://nordstjernen.org/privacy\">Privacy</a>"
@@ -4905,9 +4906,19 @@ synthesize_about_response(const char *url, const char *top_url,
                                              splash_markup);
         g_free(splash_markup);
         g_free(with_logo);
-        char *body = about_substitute(with_splash, "__ND_TAGLINE__",
-                                      about_start_tagline());
+        /* The node's own dashboard, at whatever address the gateway is set
+         * to rather than the default written into a link. */
+        g_autofree char *dash_base = ns_freenet_gateway_base(FALSE);
+        g_autofree char *dash_url = g_strconcat(
+            dash_base ? dash_base : "http://" NS_FREENET_DEFAULT_GATEWAY,
+            "/", NULL);
+        g_autofree char *dash_esc = g_markup_escape_text(dash_url, -1);
+        char *with_dash = about_substitute(with_splash,
+                                           "__ND_NODE_DASHBOARD__", dash_esc);
         g_free(with_splash);
+        char *body = about_substitute(with_dash, "__ND_TAGLINE__",
+                                      about_start_tagline());
+        g_free(with_dash);
         g_byte_array_append(resp->body, (const guint8 *)body,
                             (guint)strlen(body));
         g_free(body);
