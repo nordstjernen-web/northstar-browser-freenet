@@ -5406,8 +5406,16 @@ ns_fetch_sync_hop(const char *url, const char *top_url, const char *method,
         headers = curl_slist_append(headers, mode_h);
         g_free(mode_h);
 
-        const char *fetch_dest = is_navigation
-            ? "document" : ns_net_fetch_destination(extra_headers);
+        /* A contract resource is retrieved through the node, not navigated to
+         * on it. Claiming a document there asks the node for the shell it
+         * wraps around contract pages for browsers with no freenet: scheme,
+         * whose socket bridge only opens an address on the node's own origin —
+         * which no page in a per-contract origin can name. */
+        g_autofree char *contract_resource =
+            is_navigation ? ns_freenet_from_gateway(url) : NULL;
+        const char *fetch_dest = !is_navigation
+            ? ns_net_fetch_destination(extra_headers)
+            : (contract_resource ? "empty" : "document");
         char *dest_h = g_strdup_printf("Sec-Fetch-Dest: %s", fetch_dest);
         headers = curl_slist_append(headers, dest_h);
         g_free(dest_h);

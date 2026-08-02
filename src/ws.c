@@ -10,6 +10,7 @@
 
 #include <string.h>
 
+#include "debuglog.h"
 #include "net.h"
 
 #define NS_WS_RECV_BUF       8192
@@ -169,6 +170,7 @@ static void
 ns_ws_invoke_open(ns_ws *ws, gpointer payload)
 {
     (void)payload;
+    ns_debug_log_emit(NS_DLOG_NET, "ws", "open %s", ws->url);
     if (ws->cbs.on_open) ws->cbs.on_open(ws->user_data);
 }
 
@@ -194,6 +196,9 @@ static void
 ns_ws_invoke_close(ns_ws *ws, gpointer payload)
 {
     ns_ws_close_payload *c = payload;
+    ns_debug_log_emit(NS_DLOG_NET, "ws", "close %d %s %s", c->code,
+                      c->clean ? "clean" : "unclean",
+                      c->reason ? c->reason : "");
     if (ws->cbs.on_close)
         ws->cbs.on_close(c->code, c->reason ? c->reason : "", c->clean, ws->user_data);
 }
@@ -202,6 +207,8 @@ static void
 ns_ws_invoke_error(ns_ws *ws, gpointer payload)
 {
     const char *msg = payload;
+    ns_debug_log_emit(NS_DLOG_NET, "ws", "error %s: %s", ws->url,
+                      msg ? msg : "");
     if (ws->cbs.on_error) ws->cbs.on_error(msg, ws->user_data);
 }
 
@@ -630,6 +637,7 @@ ns_ws_new(const char        *url,
     g_queue_init(&ws->out_queue);
     g_atomic_int_set(&ws->state, NS_WS_STATE_CONNECTING);
 
+    ns_debug_log_emit(NS_DLOG_NET, "ws", "connect %s", ws->url);
     ns_ws_ref(ws);
     ws->thread = g_thread_new("nd-ws", ns_ws_worker_curl, ws);
     return ws;

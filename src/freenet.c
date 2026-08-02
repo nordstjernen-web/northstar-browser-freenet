@@ -171,6 +171,13 @@ ns_freenet_canonical_url(const char *input)
     return out;
 }
 
+/* A directory asks the node for the contract's own index document rather than
+ * the bare directory. The node answers a bare directory with the shell it
+ * wraps around contract pages for browsers that have no freenet: scheme —
+ * an iframe whose WebSocket is a postMessage bridge the shell only opens for
+ * an address on the node's own origin. Northstar has the scheme, gives each
+ * contract a real origin of its own, and resolves the node's endpoints itself,
+ * so the wrapper would only take the app's socket away from it. */
 static char *
 ns_freenet_map(const char *url, gboolean websocket)
 {
@@ -179,10 +186,18 @@ ns_freenet_map(const char *url, gboolean websocket)
 
     char *base = ns_freenet_gateway_base(websocket);
     char *out = NULL;
-    if (base)
-        out = ns_freenet_path_belongs_to_node(rest)
-            ? g_strconcat(base, "/", rest, NULL)
-            : g_strconcat(base, "/", NS_FREENET_WEB_PATH, key, "/", rest, NULL);
+    if (base) {
+        if (ns_freenet_path_belongs_to_node(rest)) {
+            out = g_strconcat(base, "/", rest, NULL);
+        } else {
+            size_t path_len = strcspn(rest, "?#");
+            const char *index = (path_len == 0 || rest[path_len - 1] == '/')
+                ? "index.html" : "";
+            g_autofree char *path = g_strndup(rest, path_len);
+            out = g_strconcat(base, "/", NS_FREENET_WEB_PATH, key, "/",
+                              path, index, rest + path_len, NULL);
+        }
+    }
 
     g_free(base);
     g_free(key);

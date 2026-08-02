@@ -179,7 +179,7 @@ Measured against them:
 Static sites work. An application that talks to the node does not yet,
 and the reason is precise rather than general — see the next section.
 
-## The node's shell page, and the one thing that does not work
+## The node's shell page, and why Northstar asks past it
 
 A node does not serve a contract's HTML for a top-level navigation. It
 serves a **shell page**: a document of its own that frames the contract in
@@ -200,24 +200,9 @@ The shell exists to give each contract an origin. A conventional browser
 loads every contract from `http://127.0.0.1:7509`, so without the
 sandboxed frame any contract could read any other's storage and
 responses. Northstar gives each contract its own origin from the scheme
-itself, so under Northstar the shell is redundant — but the node decides
-what to serve, so the shell is what arrives, and it has to work.
-
-Two things stood between an app and its socket. The first was ours: the
-shim opens with
-
-```js
-if (event.source !== window.parent) return;
-```
-
-and a message posted from a parent document into a frame arrived with
-`event.source` set to the parent's raw global rather than to the frame's
-`window.parent`, so every reply the shell sent was discarded. That is
-fixed, and it was never Freenet-specific — the same check is the first
-line of any postMessage bridge.
-
-The second is not ours. Before opening the socket the shell checks that
-the URL the app asked for names the node:
+itself, which is the whole of what the shell is for — and the shell's
+socket bridge cannot survive that. Before opening the socket it checks
+that the address the app asked for names the node:
 
 ```js
 var LOCAL_API_ORIGIN = location.origin;
@@ -229,31 +214,52 @@ if (httpProto + '//' + u.host !== LOCAL_API_ORIGIN) { /* refuse */ }
 The app builds `ws://${location.host}/v1/contract/command`, exactly as the
 manual instructs. Under Northstar `location.host` is the contract key, so
 the shell compares `http://<key>` against its own origin,
-`freenet://<key>`, and refuses. It is the same key on both sides. The
-schemes cannot match: `freenet:` has no `ws:` counterpart, and the
-mapping to one is `ws:` ↔ `http:` written into the shell.
+`freenet://<key>`, and refuses. It is the same key on both sides, and the
+schemes cannot match: `freenet:` has no `ws:` counterpart, and the mapping
+to one is `ws:` ↔ `http:` written into the shell. No page in a
+per-contract origin can name the node, so no page in one can pass. An app
+like River painted and never came alive.
 
-Two things follow. Nothing in the browser can change the outcome of that
-comparison — the inputs are both derived from the document's own correct
-URL — and rewriting a script the node served would be a site-specific
-hack of exactly the kind this codebase refuses. And the narrower check
-the surrounding comment describes, "only allow WebSocket connections to
-the local API server itself", would have to compare the *hosts*
-case-insensitively rather than the origins: `ws:` is a special scheme, so
-the URL parser case-folds its host, and `new URL('ws://' + location.host)`
-already differs from `location.host` in case alone by the time the shell
-sees it. Base58 is case-sensitive and `freenet:` is not a special scheme,
-so the address itself keeps its case.
+Nothing in the browser can change the outcome of that comparison — both
+inputs derive from the document's own correct URL — and rewriting a script
+the node served would be the site-specific hack this codebase refuses. So
+Northstar does not take the shell. It asks the node for the contract's own
+document, which is what the scheme already means: `freenet://<key>/x` is
+the contract's resource `x`, and the node's `/v1/contract/web/` endpoint is
+how Northstar retrieves it.
 
-Until then an app like River paints but does not come alive. It now fails
-with a visible `error` on its socket rather than hanging, which is at
-least the failure the app is written to handle. The parts of a node that
-do not go through the shell's socket — static contracts, the address
-space, the permission endpoints — are unaffected.
+Two things were in the way, and both are about how the request is phrased
+rather than what it asks for:
 
-This check has been in `shell_bridge.js` since at least v0.2.100, so it
-is not a regression in a node version; it is what the shell has always
-done, meeting a scheme that did not exist when it was written.
+- **A bare directory always gets the shell.** The node answers
+  `/v1/contract/web/<key>/` with the shell however the request is phrased,
+  so a directory resolves to its index document —
+  `freenet://<key>/` fetches `…/<key>/index.html`. Any static site
+  published with `fdev website publish` has one.
+- **A contract resource does not claim to be a document.** The node picks
+  the shell from `Sec-Fetch-Dest: document`; anything else gets the file.
+  A retrieval through the node is not a navigation of the node's web UI,
+  so `ns_fetch_sync_hop` sends `empty` for a URL that
+  `ns_freenet_from_gateway` recognises as a contract resource. Browsing to
+  `http://127.0.0.1:7509/` — the node's own dashboard, not a contract
+  path — is unaffected and still navigates as a document.
+
+The app then runs in its own `freenet://<key>` origin with no frame and no
+shim, builds `ws://<key>/v1/contract/command` from `location` as the manual
+instructs, and `ns_freenet_localize_origin` maps that to the node's
+WebSocket endpoint — the localization that has been in the browser all
+along for exactly this address. River connects, registers its chat
+delegate and syncs.
+
+The auth token the shell would have injected is not needed here: it exists
+to separate users sharing one `http://127.0.0.1:7509` origin, and a
+loopback client-API connection is accepted without one. A hosted node
+reached over anything but loopback is a different question, and not one
+this edition answers.
+
+The `event.source` fix that a frame's parent be delivered as the source of
+a message it sent stays, and was never Freenet-specific — that check is the
+first line of any postMessage bridge.
 
 ## The Rust component
 

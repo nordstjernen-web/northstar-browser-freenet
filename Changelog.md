@@ -4,6 +4,21 @@ Significant changes in each release:
 
 1.0.7:
 ======
+* Freenet apps reach their node. A node answers a top-level navigation to
+  a contract with a shell page that frames the app and replaces its
+  `WebSocket` with a bridge, and that bridge opens a socket only for an
+  address on the node's own origin -- which no page in a per-contract
+  origin can name, so every app that talks to its node painted and then
+  hung. The shell exists to give each contract an origin, which the
+  `freenet:` scheme already does, so Northstar asks past it: a directory
+  resolves to its index document, and a contract resource is fetched as a
+  retrieval rather than as a navigation of the node's web UI. The app then
+  runs in its own origin with no frame and no shim, and the `ws://<key>/`
+  address it builds from `location` is mapped to the node as before. River
+  connects, registers its delegate and syncs.
+* `--debug=net` reports WebSocket lifecycle -- connect, open, close and
+  error, with the address -- which until now was the one transport the
+  debug log said nothing about.
 * The toolbar says whether a Freenet node is there. A dot beside the
   bookmark star is dim when nothing answers at the gateway, amber when
   the node is running but has found no peers -- the state in which every
