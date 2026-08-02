@@ -762,6 +762,56 @@ Northstar looks for. A node started this way is **unsupervised** and will
 stop updating itself; run `freenet service install` once you no longer
 need a pinned version.
 
+## The Windows release
+
+The Windows bundle ships a node, so someone who unzips it can browse
+`freenet:` without installing anything: `freenet.exe` sits at the root of
+the bundle beside the launcher, and `ns_nodectl_find_node` looks there —
+next to the browser and one level above it — before the install locations.
+Nothing on `PATH` is needed, and the console's **Start node** button has
+something to run on a machine that has never had a node.
+
+Build it from an **MSYS2 MINGW64** shell:
+
+```sh
+scripts/pack-windows.sh
+```
+
+That configures a separate `builddir-release` tree with
+`--buildtype=release` (so `NDEBUG` is defined and vendored assertions
+compile out), chases the MinGW DLL graph from the browser and every
+GDK-PixBuf loader, copies the GTK runtime data, adds the node, and writes
+`dist/northstar-<version>-windows-x86_64.zip`. The version comes from
+`meson.build`, so the tag and the file name follow from bumping it there.
+
+The node is pinned by `FREENET_VERSION` in the script and downloaded from
+the `freenet-core` release, with its SHA-256 checked against the
+`SHA256SUMS.txt` published alongside it — a mismatch fails the build
+rather than shipping. Three environment variables steer that:
+
+| Variable | Effect |
+| --- | --- |
+| `NS_FREENET_EXE` | Use this local `freenet.exe` instead of downloading |
+| `FREENET_VERSION` / `NS_FREENET_TAG` | Take a different release |
+| `NS_SKIP_FREENET=1` | Leave the node out of the bundle |
+
+The bundle is worth testing the way it will be used — extracted somewhere
+ordinary, with **no MSYS2 on `PATH`**, since a missing MinGW DLL aborts at
+startup while loading a runtime library rather than reporting a browser
+error:
+
+```sh
+app/northstar-ui.exe --version
+app/northstar-ui.exe --headless --dump=text about:freenet-data
+```
+
+`about:freenet-data` reports whether the node answers. To check that the
+browser finds the node *it shipped with* rather than one already installed
+on the build machine, point `LOCALAPPDATA` at an empty directory and set
+`NS_NO_WIN32_MITIGATIONS=1` — that empties every other candidate and lets a
+headless run start a process, so `"control": true` can only mean the
+bundled binary was found.
+
 ## Verifying it
 
 The scheme, the addresses and the error pages were checked against a real

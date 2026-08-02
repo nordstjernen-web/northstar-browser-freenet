@@ -12,6 +12,7 @@ BUILDDIR=${BUILDDIR:-$ROOT/builddir-release}
 OUT=${OUT:-$ROOT/dist/northstar-win64}
 VERSION=${VERSION:-$(awk -F"'" \
     '/^[[:space:]]*version[[:space:]]*:/ { print $2; exit }' "$ROOT/meson.build")}
+FREENET_VERSION=${FREENET_VERSION:-0.2.117}
 SLUG="northstar-${VERSION}-windows-x86_64"
 ZIP="$ROOT/dist/${SLUG}.zip"
 APP=$OUT/app
@@ -195,6 +196,40 @@ cp "$ROOT/LICENSE" "$APP/share/northstar/"
 # required by the libraries we ship, both at the root of the bundle.
 cp "$ROOT/LICENSE" "$OUT/LICENSE.txt"
 cp "$ROOT/THIRD-PARTY-LICENSES.md" "$OUT/"
+
+# A Freenet node at the root of the bundle, so an unzipped release browses
+# freenet: without an install and the console's buttons have something to
+# run (src/nodectl.c looks beside the browser and one level above it). Set
+# NS_FREENET_EXE to a local copy, or NS_SKIP_FREENET=1 to leave it out.
+if [ -z "${NS_SKIP_FREENET:-}" ]; then
+    if [ -n "${NS_FREENET_EXE:-}" ]; then
+        [ -f "$NS_FREENET_EXE" ] || {
+            echo "pack-windows: NS_FREENET_EXE=$NS_FREENET_EXE not found" >&2
+            exit 1
+        }
+        cp "$NS_FREENET_EXE" "$OUT/freenet.exe"
+    else
+        FREENET_BASE=https://github.com/freenet/freenet-core/releases/download
+        FREENET_TAG=${NS_FREENET_TAG:-v$FREENET_VERSION}
+        tmp=$(mktemp -d)
+        curl -fsSL -o "$tmp/freenet.exe" \
+            "$FREENET_BASE/$FREENET_TAG/freenet.exe"
+        curl -fsSL -o "$tmp/SHA256SUMS.txt" \
+            "$FREENET_BASE/$FREENET_TAG/SHA256SUMS.txt"
+        want=$(awk '$2 == "freenet.exe" || $2 == "*freenet.exe" { print $1; exit }' \
+            "$tmp/SHA256SUMS.txt")
+        got=$(sha256sum "$tmp/freenet.exe" | awk '{print $1}')
+        if [ -z "$want" ] || [ "$want" != "$got" ]; then
+            echo "pack-windows: freenet.exe checksum mismatch ($got != $want)" >&2
+            rm -rf "$tmp"
+            exit 1
+        fi
+        cp "$tmp/freenet.exe" "$OUT/freenet.exe"
+        rm -rf "$tmp"
+    fi
+    printf 'pack-windows: bundled node %s\n' \
+        "$("$OUT/freenet.exe" --version 2>/dev/null | head -1)"
+fi
 
 # CA certificate bundle for libcurl HTTPS verification.
 mkdir -p "$APP/etc/ssl/certs"

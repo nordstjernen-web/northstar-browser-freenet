@@ -21,6 +21,8 @@
 #include <glib-unix.h>
 #endif
 
+extern const char *ns_app_self_exe(void);
+
 #define NS_NODECTL_LINE_MAX     8192
 #define NS_NODECTL_OUTPUT_MAX   4096
 #define NS_NODECTL_COMMAND_SECS 60
@@ -202,11 +204,19 @@ ns_nodectl_supervisor_close(void)
     }
 }
 
+/* The Windows bundle ships a node beside the browser, so a release that was
+ * unzipped and run has one without an install. The browser lives under app/
+ * and the node at the root, where someone can also run it by hand. */
 static char *
 ns_nodectl_find_node(void)
 {
-    char *found = g_find_program_in_path("freenet");
-    if (found) return found;
+    const char *exe = ns_app_self_exe();
+    g_autofree char *exe_dir = exe ? g_path_get_dirname(exe) : NULL;
+    g_autofree char *bundle_dir = exe_dir ? g_path_get_dirname(exe_dir) : NULL;
+    g_autofree char *beside = exe_dir
+        ? g_build_filename(exe_dir, "freenet.exe", NULL) : NULL;
+    g_autofree char *above = bundle_dir
+        ? g_build_filename(bundle_dir, "freenet.exe", NULL) : NULL;
 
     const char *local = g_get_user_data_dir();
     const char *programs = g_getenv("ProgramFiles");
@@ -218,11 +228,12 @@ ns_nodectl_find_node(void)
     g_autofree char *c = localapp
         ? g_build_filename(localapp, "Programs", "Freenet", "freenet.exe", NULL)
         : NULL;
-    const char *candidates[] = { a, b, c, NULL };
+    const char *candidates[] = { beside, above, a, b, c, NULL };
     for (int i = 0; candidates[i]; i++)
         if (g_file_test(candidates[i], G_FILE_TEST_IS_REGULAR))
             return g_strdup(candidates[i]);
-    return NULL;
+
+    return g_find_program_in_path("freenet");
 }
 
 /* The browser applies ProcessChildProcessPolicy = NoChildProcessCreation to

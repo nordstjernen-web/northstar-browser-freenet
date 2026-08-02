@@ -2,6 +2,17 @@ Changelog:
 =========
 Significant changes in each release:
 
+1.0.7-freenet:
+==============
+* The Windows bundle ships a Freenet node. `freenet.exe` sits at the root
+  of the zip beside the launcher, and the browser looks there -- next to
+  itself and one level above -- before the install locations, so an
+  unzipped release browses `freenet:` with nothing installed and the node
+  console's buttons have something to run. The node is pinned by version
+  and its SHA-256 verified against the checksums published with the
+  release; `NS_FREENET_EXE` supplies a local copy and `NS_SKIP_FREENET=1`
+  leaves it out.
+
 1.0.7:
 ======
 * Freenet apps reach their node. A node answers a top-level navigation to
